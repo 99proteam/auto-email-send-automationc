@@ -325,13 +325,28 @@ export default function CampaignsPage() {
                               {lead.lastContactedAt ? new Date(lead.lastContactedAt).toLocaleDateString() : 'Never'}
                             </td>
                             <td className="px-4 py-3 text-right">
-                              <button 
-                                onClick={() => setThreadModalData({ lead, campaignName: detailsModalData.campaign?.name })}
-                                disabled={lead.status === 'PENDING'}
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-800 hover:bg-gray-700 text-white rounded text-xs font-medium transition-colors disabled:opacity-30 disabled:hover:bg-gray-800"
-                              >
-                                <Eye className="w-3.5 h-3.5" /> View Thread
-                              </button>
+                              <div className="flex justify-end gap-2">
+                                <button 
+                                  onClick={() => setThreadModalData({ lead, campaignName: detailsModalData.campaign?.name })}
+                                  disabled={lead.status === 'PENDING'}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-800 hover:bg-gray-700 text-white rounded text-xs font-medium transition-colors disabled:opacity-30 disabled:hover:bg-gray-800"
+                                >
+                                  <Eye className="w-3.5 h-3.5" /> View Thread
+                                </button>
+                                {lead.status !== 'PENDING' && (
+                                  <a
+                                    href={`/thread/${lead.id}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center justify-center w-7 h-7 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white rounded transition-colors"
+                                    title="Open Thread in New Tab"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                    </svg>
+                                  </a>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))}
