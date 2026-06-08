@@ -26,6 +26,7 @@ export async function POST() {
 
     let totalProcessed = 0;
     const errors: string[] = [];
+    const diagnostics: string[] = [];
 
     for (const imapConfig of imapServers) {
       if (!imapConfig.host || !imapConfig.user || !imapConfig.pass) {
@@ -55,6 +56,7 @@ export async function POST() {
         const fetchOptions = { bodies: ['HEADER', 'TEXT'], struct: true, markSeen: false };
         const messages = await connection.search(searchCriteria, fetchOptions);
 
+        diagnostics.push(`Found ${messages.length} UNSEEN messages on ${imapConfig.user}`);
         let processedCount = 0;
 
         for (const item of messages) {
@@ -70,13 +72,17 @@ export async function POST() {
             const headerPart = item.parts.find(part => part.which === 'HEADER');
             let senderEmail = '';
             if (headerPart && headerPart.body && headerPart.body.from && headerPart.body.from.length > 0) {
-               senderEmail = headerPart.body.from[0].match(/<(.+)>/)?.[1] || headerPart.body.from[0];
+               senderEmail = headerPart.body.from[0].match(/<([^>]+)>/)?.[1] || headerPart.body.from[0];
             }
 
-            if (!senderEmail) continue;
+            if (!senderEmail) {
+              diagnostics.push(`Skipped MSG ${id}: No sender email found`);
+              continue;
+            }
 
-            // Clean up email to prevent duplicates or weird formats
+            // Clean up email
             senderEmail = senderEmail.toLowerCase().trim();
+            diagnostics.push(`MSG ${id}: Sender=${senderEmail}`);
 
             // Check if it's a BOUNCE
             const isBounce = 
@@ -106,6 +112,7 @@ export async function POST() {
 
               await connection.addFlags(id, ['\\Seen']);
               processedCount++;
+              diagnostics.push(`MSG ${id}: Handled as Bounce`);
               continue;
             }
 
@@ -118,6 +125,7 @@ export async function POST() {
               .get();
 
             if (!clSnapshot.empty) {
+              diagnostics.push(`MSG ${id}: Lead found, processing reply`);
               const clDoc = clSnapshot.docs[0];
               const clData = clDoc.data();
               const newHistory = clData.history || [];
@@ -153,13 +161,23 @@ export async function POST() {
                     });
                  }
               }
+              await connection.addFlags(id, ['\\Seen']);
+              processedCount++;
+            } else {
+              // Not found or not in right status
+              const checkAny = await db.collection('campaign_leads').where('email', '==', senderEmail).get();
+              if (checkAny.empty) {
+                 diagnostics.push(`MSG ${id}: Ignored - Email ${senderEmail} not found in any campaign`);
+              } else {
+                 const stats = checkAny.docs.map(d => d.data().status).join(',');
+                 diagnostics.push(`MSG ${id}: Ignored - Email ${senderEmail} exists but status is [${stats}], needs to be CONTACTED or AI_RESPONDED`);
+              }
+              // Do we mark it as seen? Let's leave it unseen so they don't lose it if it's important manual mail
             }
 
-            await connection.addFlags(id, ['\\Seen']);
-            processedCount++;
-
-          } catch (innerErr) {
+          } catch (innerErr: any) {
             console.error('Error processing individual email:', innerErr);
+            diagnostics.push(`MSG Error: ${innerErr.message}`);
           }
         }
 
@@ -173,7 +191,7 @@ export async function POST() {
     }
 
     const message = `Processed ${totalProcessed} new replies across ${imapServers.length} IMAP server(s).` + (errors.length > 0 ? ` Errors: ${errors.join('; ')}` : '');
-    return NextResponse.json({ success: true, message });
+    return NextResponse.json({ success: true, message, diagnostics });
 
   } catch (err: any) {
     console.error('Inbox Check Error:', err);
