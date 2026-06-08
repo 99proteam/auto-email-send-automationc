@@ -1,0 +1,274 @@
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import { Package, Plus, Trash2, Bot, Upload, X } from 'lucide-react';
+
+export default function ProductsPage() {
+  const [products, setProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  
+  // Chat Modal State
+  const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
+  const [chatMessage, setChatMessage] = useState('');
+  const [chatReply, setChatReply] = useState('');
+  const [isChatting, setIsChatting] = useState(false);
+  const [correction, setCorrection] = useState('');
+  const [isCorrecting, setIsCorrecting] = useState(false);
+  const [correctionSuccess, setCorrectionSuccess] = useState('');
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const fetchProducts = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/products');
+      const data = await res.json();
+      if (data.success) {
+        setProducts(data.products);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const text = await file.text();
+      const res = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileContent: text })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(`Successfully analyzed and added ${data.count} products!`);
+        fetchProducts();
+      } else {
+        alert('Upload failed: ' + data.error);
+      }
+    } catch (err: any) {
+      alert('Upload error: ' + err.message);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this product?')) return;
+    try {
+      await fetch(`/api/products?id=${id}`, { method: 'DELETE' });
+      fetchProducts();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleTestChat = async () => {
+    if (!chatMessage.trim()) return;
+    setIsChatting(true);
+    setChatReply('');
+    try {
+      const res = await fetch('/api/products/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId: selectedProduct.id, message: chatMessage })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setChatReply(data.reply);
+      } else {
+        setChatReply('Error: ' + data.error);
+      }
+    } catch (err: any) {
+      setChatReply('Error: ' + err.message);
+    } finally {
+      setIsChatting(false);
+    }
+  };
+
+  const handleCorrection = async () => {
+    if (!correction.trim()) return;
+    setIsCorrecting(true);
+    setCorrectionSuccess('');
+    try {
+      const res = await fetch('/api/products/correct', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId: selectedProduct.id, correction })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCorrectionSuccess('Correction saved permanently! AI has learned this rule.');
+        setCorrection('');
+        fetchProducts(); // Refresh to get updated product
+      } else {
+        setCorrectionSuccess('Error: ' + data.error);
+      }
+    } catch (err: any) {
+      setCorrectionSuccess('Error: ' + err.message);
+    } finally {
+      setIsCorrecting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-white">Products</h1>
+          <p className="text-gray-400 mt-2">Manage your software products and services.</p>
+        </div>
+        <div className="flex gap-3">
+          <input 
+            type="file" 
+            accept=".txt,.md" 
+            className="hidden" 
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+          />
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl transition-colors disabled:opacity-50"
+          >
+            <Upload className="w-5 h-5" />
+            {uploading ? 'Analyzing...' : 'Upload TXT Details'}
+          </button>
+          <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors">
+            <Plus className="w-5 h-5" />
+            Add Product
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="text-gray-400">Loading products...</div>
+      ) : products.length === 0 ? (
+        <div className="p-12 bg-gray-900 border border-gray-800 rounded-2xl text-center">
+          <Package className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+          <h3 className="text-xl font-bold text-white mb-2">No Products Yet</h3>
+          <p className="text-gray-400 mb-6">Upload a TXT file with your product details to let the AI analyze and generate your catalog automatically.</p>
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors"
+          >
+            Upload Product Data
+          </button>
+        </div>
+      ) : (
+        <div className="grid gap-4">
+          {products.map(p => (
+            <div key={p.id} className="p-6 bg-gray-900 border border-gray-800 rounded-2xl flex flex-col gap-4">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="text-xl font-bold text-white mb-1">{p.name}</h3>
+                  <p className="text-gray-400 text-sm line-clamp-2">{p.description}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => { setSelectedProduct(p); setChatMessage(''); setChatReply(''); setCorrection(''); setCorrectionSuccess(''); }}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-purple-600/20 text-purple-400 hover:bg-purple-600/30 border border-purple-500/20 rounded-lg transition-colors text-sm"
+                  >
+                    <Bot className="w-4 h-4" /> Test AI Knowledge
+                  </button>
+                  <button onClick={() => handleDelete(p.id)} className="p-1.5 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors">
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+              <div className="flex gap-2 flex-wrap mt-2">
+                {p.features?.map((f: string, i: number) => (
+                  <span key={i} className="px-2 py-1 bg-gray-800 text-gray-300 text-xs rounded-md">{f}</span>
+                ))}
+              </div>
+              {p.corrections && (
+                <div className="mt-2 p-3 bg-blue-900/20 border border-blue-500/20 rounded-lg">
+                  <p className="text-xs font-semibold text-blue-400 mb-1">AI Corrections Learned:</p>
+                  <p className="text-xs text-blue-200 whitespace-pre-wrap">{p.corrections}</p>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Chat / Correction Modal */}
+      {selectedProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-800/50">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <Bot className="w-5 h-5 text-purple-400" /> Test AI on {selectedProduct.name}
+              </h2>
+              <button onClick={() => setSelectedProduct(null)} className="text-gray-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto space-y-6 flex-1">
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Ask a customer question:</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={chatMessage}
+                    onChange={(e) => setChatMessage(e.target.value)}
+                    placeholder="e.g. Does this work with Shopify?"
+                    className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500"
+                  />
+                  <button 
+                    onClick={handleTestChat}
+                    disabled={isChatting}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl disabled:opacity-50"
+                  >
+                    {isChatting ? 'Thinking...' : 'Ask AI'}
+                  </button>
+                </div>
+              </div>
+
+              {chatReply && (
+                <div className="p-4 bg-gray-800 rounded-xl border border-gray-700">
+                  <p className="text-sm font-semibold text-purple-400 mb-1">AI Reply:</p>
+                  <p className="text-gray-300 text-sm whitespace-pre-wrap">{chatReply}</p>
+                </div>
+              )}
+
+              {chatReply && (
+                <div className="pt-4 border-t border-gray-800">
+                  <label className="block text-sm font-medium text-red-400 mb-2">Did it answer wrong? Correct the AI:</label>
+                  <textarea 
+                    value={correction}
+                    onChange={(e) => setCorrection(e.target.value)}
+                    placeholder="e.g. Actually, tell them we don't support Shopify yet but we offer a 10% discount to join the waitlist."
+                    className="w-full bg-red-950/20 border border-red-900/50 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-red-500 h-24 resize-none mb-2"
+                  />
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-emerald-400">{correctionSuccess}</span>
+                    <button 
+                      onClick={handleCorrection}
+                      disabled={isCorrecting || !correction.trim()}
+                      className="px-4 py-2 bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-500/30 rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
+                    >
+                      {isCorrecting ? 'Saving...' : 'Save Rule Permanently'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
