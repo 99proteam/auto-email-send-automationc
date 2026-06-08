@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { adminDb as db } from '@/lib/firebase-admin';
+import { db } from '@/lib/firebaseAdmin';
 
 export async function GET(request: Request) {
   if (!db) return NextResponse.json({ error: 'Firebase not configured' }, { status: 500 });
