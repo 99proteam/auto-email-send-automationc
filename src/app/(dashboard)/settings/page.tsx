@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Settings, Plus, Key, CheckCircle, XCircle, Bot, Timer, Clock, Trash2, Code } from 'lucide-react';
 
 export default function SettingsPage() {
+  const [baseUrl, setBaseUrl] = useState('https://your-vercel-domain.vercel.app');
   const [isTestingSmtp, setIsTestingSmtp] = useState(false);
   const [smtpResult, setSmtpResult] = useState<{success: boolean, message: string} | null>(null);
 
@@ -31,8 +32,13 @@ export default function SettingsPage() {
   const [newImap, setNewImap] = useState({ host: '', port: '993', user: '', pass: '', tls: true });
   const [isSavingImap, setIsSavingImap] = useState(false);
   const [imapResult, setImapResult] = useState<{success: boolean, message: string} | null>(null);
+  const [isTestingImap, setIsTestingImap] = useState(false);
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setBaseUrl(window.location.origin);
+    }
+
     fetch('/api/settings/automation').then(r => r.json()).then(data => {
       if (data.success && data.settings) {
         setFollowUpDelayDays(data.settings.followUpDelayDays || 3);
@@ -81,6 +87,20 @@ export default function SettingsPage() {
       if (data.success) setImapServers(data.servers);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleTestImap = async () => {
+    setIsTestingImap(true);
+    setImapResult(null);
+    try {
+      const res = await fetch('/api/imap/test', { method: 'POST' });
+      const data = await res.json();
+      setImapResult({ success: data.success, message: data.message || (data.success ? 'IMAP Test successful!' : 'IMAP connection failed') });
+    } catch (err: any) {
+      setImapResult({ success: false, message: 'API request failed: ' + (err.message || String(err)) });
+    } finally {
+      setIsTestingImap(false);
     }
   };
 
@@ -321,11 +341,11 @@ export default function SettingsPage() {
                 <h3 className="text-white font-semibold flex items-center gap-2 mb-2"><Code className="w-4 h-4 text-emerald-400" /> 2. Setup Campaign Runner (Sends Emails)</h3>
                 <p className="text-gray-400 text-sm mb-3">This endpoint generates and sends initial pitches and follow-up emails to your leads automatically.</p>
                 <div className="bg-black/50 p-3 rounded-lg text-sm text-gray-300 font-mono select-all overflow-x-auto">
-                  URL: <span className="text-emerald-400">https://your-vercel-domain.vercel.app/api/campaign/run</span>
+                  URL: <span className="text-emerald-400">{baseUrl}/api/campaign/run</span>
                 </div>
                 <ul className="text-sm text-gray-400 mt-3 list-disc pl-5 space-y-1">
                   <li><strong>Schedule:</strong> Every 15 minutes</li>
-                  <li><strong>HTTP Method:</strong> POST (Important! Must be POST in Advanced Settings)</li>
+                  <li><strong>HTTP Method:</strong> GET (or POST)</li>
                 </ul>
               </div>
 
@@ -333,11 +353,11 @@ export default function SettingsPage() {
                 <h3 className="text-white font-semibold flex items-center gap-2 mb-2"><Code className="w-4 h-4 text-purple-400" /> 3. Setup Inbox Checker (Reads Replies)</h3>
                 <p className="text-gray-400 text-sm mb-3">This endpoint logs into your IMAP email server, reads unread replies, and uses Gemini to respond instantly.</p>
                 <div className="bg-black/50 p-3 rounded-lg text-sm text-gray-300 font-mono select-all overflow-x-auto">
-                  URL: <span className="text-purple-400">https://your-vercel-domain.vercel.app/api/inbox/check</span>
+                  URL: <span className="text-purple-400">{baseUrl}/api/inbox/check</span>
                 </div>
                 <ul className="text-sm text-gray-400 mt-3 list-disc pl-5 space-y-1">
                   <li><strong>Schedule:</strong> Every 10 minutes</li>
-                  <li><strong>HTTP Method:</strong> POST</li>
+                  <li><strong>HTTP Method:</strong> GET (or POST)</li>
                 </ul>
               </div>
             </div>
@@ -425,10 +445,19 @@ export default function SettingsPage() {
               <Key className="w-5 h-5 text-gray-400" />
               IMAP Servers (Inbox)
             </h2>
-            <button onClick={() => setShowAddImap(!showAddImap)} className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-sm text-white rounded-lg transition-colors">
-              <Plus className="w-4 h-4" />
-              Add IMAP Server
-            </button>
+            <div className="flex gap-3">
+              <button 
+                onClick={handleTestImap}
+                disabled={isTestingImap}
+                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 border border-blue-500/20 text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+              >
+                {isTestingImap ? 'Testing...' : 'Test Connection'}
+              </button>
+              <button onClick={() => setShowAddImap(!showAddImap)} className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-sm text-white rounded-lg transition-colors">
+                <Plus className="w-4 h-4" />
+                Add Server
+              </button>
+            </div>
           </div>
 
           {imapResult && (
