@@ -2,12 +2,20 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebaseAdmin';
 import { sendEmail } from '@/lib/email';
 
-export async function POST() {
+export async function POST(req: Request) {
   if (!db) {
     return NextResponse.json({ success: false, message: 'Firebase not configured in environment.' }, { status: 500 });
   }
 
   try {
+    let targetEmail = '';
+    try {
+      const body = await req.json();
+      targetEmail = body.email || '';
+    } catch (e) {
+      // ignore JSON parse error if body is empty
+    }
+
     const smtpSnapshot = await db.collection('settings').doc('smtp').get();
     const data = smtpSnapshot.data();
     const servers = data?.servers || [];
@@ -18,11 +26,12 @@ export async function POST() {
 
     // Try sending with the first server
     const smtpConfig = servers[0];
+    const emailToSendTo = targetEmail || smtpConfig.user;
     
-    // We send a test email to the sender's own email address just to test if connection works
+    // We send a test email
     await sendEmail(
       smtpConfig,
-      smtpConfig.user, // send to self
+      emailToSendTo,
       'Auto Email Lead Gen: Test Connection Successful',
       '<p>Your SMTP integration is working correctly. You are ready to start sending campaigns.</p>'
     );

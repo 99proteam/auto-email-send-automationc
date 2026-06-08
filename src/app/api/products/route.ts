@@ -109,9 +109,15 @@ export async function PATCH(req: Request) {
       await db.collection('products').doc(id).update(parsedData);
       return NextResponse.json({ success: true, updatedData: parsedData });
     } else {
-      await db.collection('products').doc(id).update({
-        name, description, features, pricing_info, target_audience, url
-      });
+      const updateData: any = {};
+      if (name !== undefined) updateData.name = name;
+      if (description !== undefined) updateData.description = description;
+      if (features !== undefined) updateData.features = features;
+      if (pricing_info !== undefined) updateData.pricing_info = pricing_info;
+      if (target_audience !== undefined) updateData.target_audience = target_audience;
+      if (url !== undefined) updateData.url = url;
+      
+      await db.collection('products').doc(id).update(updateData);
       return NextResponse.json({ success: true });
     }
   } catch (err: any) {

@@ -84,11 +84,17 @@ export default function SettingsPage() {
     }
   };
 
+  const [testEmail, setTestEmail] = useState('');
+
   const handleTestSmtp = async () => {
     setIsTestingSmtp(true);
     setSmtpResult(null);
     try {
-      const res = await fetch('/api/smtp/test', { method: 'POST' });
+      const res = await fetch('/api/smtp/test', { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: testEmail })
+      });
       const data = await res.json();
       setSmtpResult({ success: data.success, message: data.message || (data.success ? 'Email sent successfully!' : 'Connection failed') });
     } catch (err: any) {
@@ -345,6 +351,13 @@ export default function SettingsPage() {
               SMTP Servers
             </h2>
             <div className="flex gap-3">
+              <input 
+                type="email" 
+                placeholder="Test Email Address" 
+                value={testEmail}
+                onChange={e => setTestEmail(e.target.value)}
+                className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500 w-48"
+              />
               <button 
                 onClick={handleTestSmtp}
                 disabled={isTestingSmtp}
