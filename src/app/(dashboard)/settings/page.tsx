@@ -26,7 +26,9 @@ export default function SettingsPage() {
   const [isSavingServer, setIsSavingServer] = useState(false);
 
   // IMAP Settings
-  const [imapConfig, setImapConfig] = useState({ host: '', port: '993', user: '', pass: '', tls: true });
+  const [imapServers, setImapServers] = useState<any[]>([]);
+  const [showAddImap, setShowAddImap] = useState(false);
+  const [newImap, setNewImap] = useState({ host: '', port: '993', user: '', pass: '', tls: true });
   const [isSavingImap, setIsSavingImap] = useState(false);
   const [imapResult, setImapResult] = useState<{success: boolean, message: string} | null>(null);
 
@@ -44,35 +46,41 @@ export default function SettingsPage() {
     });
 
     fetch('/api/imap').then(r => r.json()).then(data => {
-      if (data.success && data.imap) {
-        setImapConfig({
-          host: data.imap.host || '',
-          port: data.imap.port?.toString() || '993',
-          user: data.imap.user || '',
-          pass: data.imap.pass || '',
-          tls: data.imap.tls !== false
-        });
-      }
+      if (data.success) setImapServers(data.servers || []);
     });
   }, []);
 
-  const handleSaveImap = async () => {
-    if (!imapConfig.host || !imapConfig.user) return;
+  const handleAddImap = async () => {
+    if (!newImap.host || !newImap.user) return;
     setIsSavingImap(true);
     try {
       const res = await fetch('/api/imap', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          imap: { ...imapConfig, port: parseInt(imapConfig.port) } 
-        })
+        body: JSON.stringify({ ...newImap, port: parseInt(newImap.port) })
       });
       const data = await res.json();
-      setImapResult({ success: data.success, message: data.message || (data.success ? 'IMAP settings saved!' : 'Failed') });
+      if (data.success) {
+        setImapServers(data.servers);
+        setShowAddImap(false);
+        setNewImap({ host: '', port: '993', user: '', pass: '', tls: true });
+      }
+      setImapResult({ success: data.success, message: data.message || (data.success ? 'IMAP server added!' : 'Failed') });
     } catch (err: any) {
       setImapResult({ success: false, message: 'API request failed: ' + (err.message || String(err)) });
     } finally {
       setIsSavingImap(false);
+    }
+  };
+
+  const handleDeleteImap = async (index: number) => {
+    if (!confirm('Delete this IMAP server?')) return;
+    try {
+      const res = await fetch(`/api/imap?index=${index}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) setImapServers(data.servers);
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -149,7 +157,7 @@ export default function SettingsPage() {
       const res = await fetch('/api/smtp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ server: { ...newServer, port: parseInt(newServer.port) } })
+        body: JSON.stringify({ ...newServer, port: parseInt(newServer.port) })
       });
       const data = await res.json();
       if (data.success) {
@@ -402,52 +410,62 @@ export default function SettingsPage() {
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
               <Key className="w-5 h-5 text-gray-400" />
-              IMAP Configuration (Inbox)
+              IMAP Servers (Inbox)
             </h2>
-            <div className="flex gap-3">
-              <button 
-                onClick={handleSaveImap}
-                disabled={isSavingImap}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-sm text-white rounded-lg transition-colors disabled:opacity-50"
-              >
-                {isSavingImap ? 'Saving...' : 'Save IMAP Server'}
-              </button>
-            </div>
-          </div>
-          
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">IMAP Host</label>
-              <input type="text" placeholder="imap.gmail.com" value={imapConfig.host} onChange={e => setImapConfig({...imapConfig, host: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Port</label>
-              <input type="number" placeholder="993" value={imapConfig.port} onChange={e => setImapConfig({...imapConfig, port: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Email / Username</label>
-              <input type="email" placeholder="you@domain.com" value={imapConfig.user} onChange={e => setImapConfig({...imapConfig, user: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">App Password</label>
-              <input type="password" placeholder="••••••••••••" value={imapConfig.pass} onChange={e => setImapConfig({...imapConfig, pass: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
-            </div>
-            <div className="col-span-2 flex items-center gap-2 mt-2">
-              <input type="checkbox" id="tlsCheckbox" checked={imapConfig.tls} onChange={e => setImapConfig({...imapConfig, tls: e.target.checked})} className="w-4 h-4 rounded bg-gray-800 border-gray-700 text-purple-600 focus:ring-purple-600 focus:ring-offset-gray-900" />
-              <label htmlFor="tlsCheckbox" className="text-sm text-gray-300">Use TLS (Recommended for Port 993)</label>
-            </div>
+            <button onClick={() => setShowAddImap(!showAddImap)} className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-sm text-white rounded-lg transition-colors">
+              <Plus className="w-4 h-4" />
+              Add IMAP Server
+            </button>
           </div>
 
           {imapResult && (
-            <div className={`p-4 mt-4 rounded-xl flex items-center gap-3 ${imapResult.success ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border border-red-500/20 text-red-400'}`}>
+            <div className={`p-4 mb-4 rounded-xl flex items-center gap-3 ${imapResult.success ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border border-red-500/20 text-red-400'}`}>
               {imapResult.success ? <CheckCircle className="w-5 h-5 flex-shrink-0" /> : <XCircle className="w-5 h-5 flex-shrink-0" />}
               <span className="font-medium text-sm">{imapResult.message}</span>
             </div>
           )}
 
-          <div className="mt-4 text-gray-500 text-sm">
-            Save your IMAP connection so the system can read incoming replies and prompt the AI to respond automatically.
-          </div>
+          {showAddImap && (
+            <div className="mb-6 p-4 bg-gray-800/50 rounded-xl border border-gray-700">
+              <h3 className="text-sm font-bold text-white mb-3">New IMAP Server</h3>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <input type="text" placeholder="Host (e.g., imap.gmail.com)" value={newImap.host} onChange={e => setNewImap({...newImap, host: e.target.value})} className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
+                <input type="number" placeholder="Port (e.g., 993)" value={newImap.port} onChange={e => setNewImap({...newImap, port: e.target.value})} className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
+                <input type="email" placeholder="Email / Username" value={newImap.user} onChange={e => setNewImap({...newImap, user: e.target.value})} className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
+                <input type="password" placeholder="App Password" value={newImap.pass} onChange={e => setNewImap({...newImap, pass: e.target.value})} className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
+              </div>
+              <div className="flex items-center gap-2 mb-4">
+                <input type="checkbox" id="imapTlsCheckbox" checked={newImap.tls} onChange={e => setNewImap({...newImap, tls: e.target.checked})} className="w-4 h-4 rounded bg-gray-800 border-gray-700 text-purple-600 focus:ring-purple-600 focus:ring-offset-gray-900" />
+                <label htmlFor="imapTlsCheckbox" className="text-sm text-gray-300">Use TLS (Recommended for Port 993)</label>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setShowAddImap(false)} className="px-3 py-1.5 text-sm text-gray-400 hover:text-white">Cancel</button>
+                <button onClick={handleAddImap} disabled={isSavingImap} className="px-3 py-1.5 text-sm bg-purple-600 hover:bg-purple-700 text-white rounded-lg disabled:opacity-50">
+                  {isSavingImap ? 'Saving...' : 'Save IMAP Server'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {imapServers.length === 0 ? (
+            <div className="text-gray-500 text-sm">
+              No IMAP servers configured. Add one for each email account to receive replies.
+            </div>
+          ) : (
+            <div className="grid gap-2">
+              {imapServers.map((s: any, i: number) => (
+                <div key={i} className="flex justify-between items-center p-3 bg-gray-800 rounded-xl border border-gray-700">
+                  <div>
+                    <span className="text-white font-medium text-sm">{s.host}:{s.port}</span>
+                    <div className="text-sm text-gray-400 mt-1">{s.user}</div>
+                  </div>
+                  <button onClick={() => handleDeleteImap(i)} className="text-red-400 hover:bg-red-500/10 p-1.5 rounded-lg transition-colors">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
