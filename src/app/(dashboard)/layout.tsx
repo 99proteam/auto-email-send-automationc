@@ -1,10 +1,17 @@
 import Sidebar from '@/components/Sidebar';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const cookieStore = await cookies();
+  const token = cookieStore.get('auth_token')?.value;
+  if (!token || token !== 'authenticated') {
+    redirect('/login');
+  }
   return (
     <div className="flex h-screen bg-gray-950 text-gray-100 overflow-hidden">
       <Sidebar />
