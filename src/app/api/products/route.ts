@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebaseAdmin';
 import { GoogleGenAI } from '@google/genai';
+import { callWithRetry } from '@/lib/gemini';
 
 export async function GET() {
   if (!db) return NextResponse.json({ error: 'DB not configured' }, { status: 500 });
@@ -42,10 +43,10 @@ export async function POST(req: Request) {
       ${fileContent.substring(0, 30000)}
     `;
 
-    const response = await ai.models.generateContent({
+    const response = await callWithRetry(() => ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
-    });
+    }));
 
     let jsonStr = (response.text || '').trim();
     if (jsonStr.startsWith('```json')) jsonStr = jsonStr.replace(/^```json/, '').replace(/```$/, '').trim();
@@ -57,13 +58,63 @@ export async function POST(req: Request) {
     for (const product of products) {
       await db.collection('products').add({
         ...product,
-        createdAt: new Date() // Since Admin FieldValue might have issues with imports here
+        createdAt: new Date()
       });
     }
 
     return NextResponse.json({ success: true, count: products.length });
   } catch (err: any) {
     console.error('Upload Error:', err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: Request) {
+  if (!db) return NextResponse.json({ error: 'DB not configured' }, { status: 500 });
+  
+  try {
+    const body = await req.json();
+    const { id, fileContent, name, description, features, pricing_info, target_audience, url } = body;
+    
+    if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
+
+    if (fileContent) {
+      let apiKey = process.env.GEMINI_API_KEY;
+      const doc = await db.collection('settings').doc('gemini').get();
+      if (doc.exists && doc.data()?.apiKey) apiKey = doc.data()?.apiKey;
+
+      if (!apiKey) return NextResponse.json({ error: 'Missing Gemini key.' }, { status: 400 });
+      const ai = new GoogleGenAI({ apiKey });
+      
+      const prompt = `
+        You are an expert product analyst. Extract product information from the following text into a JSON object.
+        The object must have: "description", "features" (array of strings), "pricing_info", and "target_audience".
+        This is for an existing product, so focus on updating the knowledge based on this text.
+        Return ONLY a raw JSON object.
+        
+        Text:
+        ${fileContent.substring(0, 30000)}
+      `;
+
+      const response = await callWithRetry(() => ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt
+      }));
+
+      let jsonStr = (response.text || '').trim();
+      if (jsonStr.startsWith('```json')) jsonStr = jsonStr.replace(/^```json/, '').replace(/```$/, '').trim();
+      if (jsonStr.startsWith('```')) jsonStr = jsonStr.replace(/^```/, '').replace(/```$/, '').trim();
+      
+      const parsedData = JSON.parse(jsonStr);
+      await db.collection('products').doc(id).update(parsedData);
+      return NextResponse.json({ success: true, updatedData: parsedData });
+    } else {
+      await db.collection('products').doc(id).update({
+        name, description, features, pricing_info, target_audience, url
+      });
+      return NextResponse.json({ success: true });
+    }
+  } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

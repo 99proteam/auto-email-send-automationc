@@ -5,18 +5,16 @@ export async function GET() {
   if (!db) return NextResponse.json({ error: 'DB not configured' }, { status: 500 });
   
   try {
-    const snapshot = await db.collection('leads').orderBy('createdAt', 'desc').limit(100).get();
+    const snapshot = await db.collection('leads').orderBy('createdAt', 'desc').limit(500).get();
     const leads = snapshot.docs.map(doc => {
       const data = doc.data();
       return {
         id: doc.id,
         email: data.email,
         name: data.name,
-        status: data.status,
-        campaignId: data.campaignId,
-        firstContactedAt: data.firstContactedAt?.toDate ? data.firstContactedAt.toDate().toISOString() : data.firstContactedAt,
-        lastContactedAt: data.lastContactedAt?.toDate ? data.lastContactedAt.toDate().toISOString() : data.lastContactedAt,
-        followUpCount: data.followUpCount || 0
+        company: data.company,
+        listName: data.listName || 'Default List',
+        createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : data.createdAt
       };
     });
     return NextResponse.json({ success: true, leads });
@@ -29,7 +27,7 @@ export async function POST(req: Request) {
   if (!db) return NextResponse.json({ error: 'DB not configured' }, { status: 500 });
   
   try {
-    const { leads, campaignId } = await req.json();
+    const { leads, listName } = await req.json();
     if (!leads || !Array.isArray(leads)) return NextResponse.json({ error: 'Invalid leads array' }, { status: 400 });
 
     let count = 0;
@@ -42,7 +40,7 @@ export async function POST(req: Request) {
       if (!lead.email) continue;
       const email = lead.email.toLowerCase().trim();
 
-      const existing = await db.collection('leads').where('email', '==', email).limit(1).get();
+      const existing = await db.collection('leads').where('email', '==', email).where('listName', '==', listName).limit(1).get();
       if (!existing.empty) {
         skipped++;
         continue;
@@ -53,10 +51,8 @@ export async function POST(req: Request) {
         email,
         name: lead.name || '',
         company: lead.company || '',
-        status: 'PENDING',
-        campaignId: campaignId || null,
-        createdAt: new Date(),
-        followUpCount: 0
+        listName: listName || 'Default List',
+        createdAt: new Date()
       });
 
       count++;

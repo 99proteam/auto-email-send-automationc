@@ -35,16 +35,34 @@ export async function POST(request: Request) {
     for (const doc of campaignsSnapshot.docs) {
       if (limitReached) break;
       const campaign = doc.data();
+      const campaignId = doc.id;
+      if (!campaign.listName) continue;
       
       const leadsSnapshot = await db.collection('leads')
-        .where('campaignId', '==', doc.id)
-        .where('status', 'in', ['PENDING', 'CONTACTED', 'AI_RESPONDED'])
+        .where('listName', '==', campaign.listName)
         .get();
 
       for (const leadDoc of leadsSnapshot.docs) {
         if (globalSent >= globalDailyLimit) {
           limitReached = true;
           break;
+        }
+
+        const lead = leadDoc.data();
+        const clId = `${campaignId}_${leadDoc.id}`;
+        const clRef = db.collection('campaign_leads').doc(clId);
+        const clSnapshot = await clRef.get();
+        
+        let clData: any = clSnapshot.exists ? clSnapshot.data() : {
+          campaignId,
+          leadId: leadDoc.id,
+          email: lead.email,
+          status: 'PENDING',
+          followUpCount: 0
+        };
+
+        if (['REPLIED', 'BOUNCED', 'DEAD'].includes(clData.status)) {
+          continue; // Skip leads that have reached a terminal state in this campaign
         }
 
         // Find an available SMTP server that hasn't hit its limit
@@ -72,45 +90,44 @@ export async function POST(request: Request) {
           break;
         }
 
-        const lead = leadDoc.data();
         const now = new Date();
         let emailSent = false;
         
-        if (lead.status === 'PENDING') {
+        if (clData.status === 'PENDING') {
           // INITIAL OUTREACH
           const draft = await generateEmailDraft(campaign.productInfo, lead);
           await sendEmail(availableSmtp, lead.email, campaign.subject || 'Special Offer', draft || '');
           emailSent = true;
 
-          await leadDoc.ref.update({
+          await clRef.set({
+            ...clData,
             status: 'CONTACTED',
             firstContactedAt: now,
             lastContactedAt: now,
-            followUpCount: 0,
             threadId: lead.email
           });
         } 
-        else if (lead.status === 'CONTACTED' || lead.status === 'AI_RESPONDED') {
+        else if (clData.status === 'CONTACTED' || clData.status === 'AI_RESPONDED') {
           // FOLLOW UP LOGIC
-          const lastContact = lead.lastContactedAt?.toDate ? lead.lastContactedAt.toDate() : new Date(lead.lastContactedAt);
+          const lastContact = clData.lastContactedAt?.toDate ? clData.lastContactedAt.toDate() : new Date(clData.lastContactedAt);
           const diffTime = Math.abs(now.getTime() - lastContact.getTime());
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
 
           if (diffDays >= followUpDelayDays) {
-            const currentFollowUpCount = lead.followUpCount || 0;
+            const currentFollowUpCount = clData.followUpCount || 0;
             
             if (currentFollowUpCount < maxFollowUps) {
               const followUpDraft = await generateFollowUpDraft(campaign.productInfo, lead, currentFollowUpCount + 1);
               await sendEmail(availableSmtp, lead.email, `Re: ${campaign.subject || 'Special Offer'}`, followUpDraft || '');
               emailSent = true;
 
-              await leadDoc.ref.update({
+              await clRef.update({
                 lastContactedAt: now,
                 followUpCount: currentFollowUpCount + 1,
                 status: 'CONTACTED'
               });
             } else {
-              await leadDoc.ref.update({ status: 'DEAD' });
+              await clRef.update({ status: 'DEAD' });
             }
           }
         }

@@ -6,10 +6,11 @@ import { Send, Plus, Pause, Play, Trash2, X, Users, Mail, CheckCircle, AlertTria
 export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
+  const [leadLists, setLeadLists] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ name: '', subject: '', productId: '' });
+  const [form, setForm] = useState({ name: '', subject: '', productId: '', listName: '' });
 
   const fetchCampaigns = () => {
     fetch('/api/campaigns').then(r => r.json()).then(data => {
@@ -23,10 +24,13 @@ export default function CampaignsPage() {
     fetch('/api/products').then(r => r.json()).then(data => {
       if (data.success) setProducts(data.products);
     });
+    fetch('/api/leads/lists').then(r => r.json()).then(data => {
+      if (data.success) setLeadLists(data.lists);
+    });
   }, []);
 
   const handleCreate = async () => {
-    if (!form.name || !form.subject || !form.productId) return alert('Please fill all fields');
+    if (!form.name || !form.subject || !form.productId || !form.listName) return alert('Please fill all fields');
     setCreating(true);
     const selectedProduct = products.find(p => p.id === form.productId);
     try {
@@ -38,13 +42,14 @@ export default function CampaignsPage() {
           subject: form.subject,
           productId: form.productId,
           productInfo: `${selectedProduct?.name}: ${selectedProduct?.description}. Features: ${selectedProduct?.features?.join(', ')}. Pricing: ${selectedProduct?.pricing_info || 'Contact us'}`,
+          listName: form.listName,
           status: 'ACTIVE'
         })
       });
       const data = await res.json();
       if (data.success) {
         setShowCreate(false);
-        setForm({ name: '', subject: '', productId: '' });
+        setForm({ name: '', subject: '', productId: '', listName: '' });
         fetchCampaigns();
       }
     } catch (err) { console.error(err); }
@@ -80,7 +85,6 @@ export default function CampaignsPage() {
         </button>
       </div>
 
-      {/* Create Campaign Modal */}
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-lg overflow-hidden">
@@ -104,7 +108,14 @@ export default function CampaignsPage() {
                   {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
-              <p className="text-xs text-gray-500">After creating the campaign, upload leads via the Leads page and they will be automatically assigned to this active campaign.</p>
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">Target Lead List</label>
+                <select value={form.listName} onChange={e => setForm({...form, listName: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500">
+                  <option value="">Select a list...</option>
+                  {leadLists.map(list => <option key={list} value={list}>{list}</option>)}
+                </select>
+                {leadLists.length === 0 && <p className="text-xs text-amber-500 mt-1">No lists found. Please upload leads first.</p>}
+              </div>
             </div>
             <div className="p-4 border-t border-gray-800 flex justify-end gap-3">
               <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-gray-400 hover:text-white">Cancel</button>
@@ -138,7 +149,10 @@ export default function CampaignsPage() {
                       {c.status}
                     </span>
                   </div>
-                  <p className="text-gray-400 text-sm mt-1">Subject: {c.subject}</p>
+                  <div className="text-gray-400 text-sm mt-1 flex gap-4">
+                    <span>Subject: {c.subject}</span>
+                    <span>Target List: <span className="text-gray-300 font-medium">{c.listName || 'All'}</span></span>
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => handleToggleStatus(c.id, c.status)} className={`p-2 rounded-lg transition-colors ${c.status === 'ACTIVE' ? 'text-yellow-400 hover:bg-yellow-500/10' : 'text-emerald-400 hover:bg-emerald-500/10'}`} title={c.status === 'ACTIVE' ? 'Pause' : 'Resume'}>

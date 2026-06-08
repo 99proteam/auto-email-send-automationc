@@ -87,74 +87,66 @@ export async function POST() {
               parsed.subject?.toLowerCase().includes('failure notice');
 
             if (isBounce) {
-              // Extract all email addresses from the bounce message body
               const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi;
               const textBody = parsed.text || '';
               const matches = [...textBody.matchAll(emailRegex)].map(m => m[1].toLowerCase());
               
               let bouncedLeadFound = false;
               for (const potentialEmail of matches) {
-                // Avoid our own email addresses
                 if (potentialEmail.includes('mailer-daemon') || potentialEmail.includes('postmaster')) continue;
                 
-                const bounceLeadsSnapshot = await db.collection('leads').where('email', '==', potentialEmail).limit(1).get();
-                if (!bounceLeadsSnapshot.empty) {
-                  const bouncedLeadDoc = bounceLeadsSnapshot.docs[0];
-                  await bouncedLeadDoc.ref.update({ status: 'BOUNCED' });
+                const clSnapshot = await db.collection('campaign_leads').where('email', '==', potentialEmail).get();
+                if (!clSnapshot.empty) {
+                  const batch = db.batch();
+                  clSnapshot.docs.forEach(doc => batch.update(doc.ref, { status: 'BOUNCED' }));
+                  await batch.commit();
                   bouncedLeadFound = true;
-                  break;
                 }
               }
 
-              // Mark bounce email as read and skip normal processing
               await connection.addFlags(id, ['\\Seen']);
               processedCount++;
               continue;
             }
 
-            // Find the lead in our database
-            const leadsSnapshot = await db.collection('leads')
+            // Find the most recently contacted campaign for this lead
+            const clSnapshot = await db.collection('campaign_leads')
               .where('email', '==', senderEmail)
+              .where('status', 'in', ['CONTACTED', 'AI_RESPONDED'])
+              .orderBy('lastContactedAt', 'desc')
               .limit(1)
               .get();
 
-            if (!leadsSnapshot.empty) {
-              const leadDoc = leadsSnapshot.docs[0];
-              const leadData = leadDoc.data();
+            if (!clSnapshot.empty) {
+              const clDoc = clSnapshot.docs[0];
+              const clData = clDoc.data();
 
-              // Mark lead as REPLIED so campaign runner doesn't keep hitting them with generic follow-ups
-              await leadDoc.ref.update({ status: 'REPLIED' });
+              await clDoc.ref.update({ status: 'REPLIED' });
 
-              // Find the campaign to get product context
-              const campaignDoc = await db.collection('campaigns').doc(leadData.campaignId).get();
+              const campaignDoc = await db.collection('campaigns').doc(clData.campaignId).get();
               
               if (campaignDoc.exists) {
                  const campaign = campaignDoc.data();
                  
-                 // Prompt Gemini with the reply
                  const aiReply = await analyzeReplyAndRespond(
                    parsed.text || 'No text content', 
                    "Previous email thread",
                    campaign?.productInfo || ''
                  );
 
-                 // If AI says REQUIRES_MANUAL_INTERVENTION, we stop and leave it for the human.
                  if (aiReply && !aiReply.includes('REQUIRES_MANUAL_INTERVENTION')) {
-                    // Send the reply via SMTP
                     const smtpConfig = smtpServers[0];
                     await sendEmail(smtpConfig, senderEmail, `Re: ${campaign?.subject || 'Special Offer'}`, aiReply || '');
                     
-                    // Update lead status to AI_RESPONDED
-                    await leadDoc.ref.update({ 
+                    await clDoc.ref.update({ 
                       status: 'AI_RESPONDED',
                       lastContactedAt: new Date(),
-                      followUpCount: (leadData.followUpCount || 0) + 1
+                      followUpCount: (clData.followUpCount || 0) + 1
                     });
                  }
               }
             }
 
-            // Finally, mark the email as SEEN on the IMAP server so we don't process it again next 10 mins
             await connection.addFlags(id, ['\\Seen']);
             processedCount++;
 

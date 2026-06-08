@@ -1,7 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { db } from './firebaseAdmin';
 
-async function callWithRetry(fn: () => Promise<any>, retries = 3, delay = 2000): Promise<any> {
+export async function callWithRetry(fn: () => Promise<any>, retries = 3, delay = 2000): Promise<any> {
   for (let i = 0; i < retries; i++) {
     try {
       return await fn();

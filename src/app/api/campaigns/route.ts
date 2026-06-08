@@ -11,28 +11,36 @@ export async function GET() {
     for (const doc of campaignsSnapshot.docs) {
       const data = doc.data();
       
-      const leadsSnapshot = await db.collection('leads').where('campaignId', '==', doc.id).get();
+      const clSnapshot = await db.collection('campaign_leads').where('campaignId', '==', doc.id).get();
       const leadCounts = {
-        total: leadsSnapshot.size,
+        total: clSnapshot.size,
         contacted: 0,
         replied: 0,
         bounced: 0,
         dead: 0
       };
 
-      leadsSnapshot.docs.forEach(leadDoc => {
-        const status = leadDoc.data().status;
+      clSnapshot.docs.forEach(clDoc => {
+        const status = clDoc.data().status;
         if (status === 'CONTACTED' || status === 'AI_RESPONDED') leadCounts.contacted++;
         else if (status === 'REPLIED') leadCounts.replied++;
         else if (status === 'BOUNCED') leadCounts.bounced++;
         else if (status === 'DEAD') leadCounts.dead++;
       });
 
+      // If the campaign hasn't processed any leads yet, we should probably still show the potential total
+      // from the targeted list to avoid it saying "0 Total Leads".
+      if (leadCounts.total === 0 && data.listName) {
+        const listSnapshot = await db.collection('leads').where('listName', '==', data.listName).get();
+        leadCounts.total = listSnapshot.size;
+      }
+
       campaigns.push({
         id: doc.id,
         name: data.name,
         subject: data.subject,
         productId: data.productId,
+        listName: data.listName || '',
         status: data.status,
         createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : data.createdAt,
         leadCounts
@@ -49,7 +57,7 @@ export async function POST(req: Request) {
   if (!db) return NextResponse.json({ error: 'DB not configured' }, { status: 500 });
   
   try {
-    const { name, subject, productId, productInfo, status } = await req.json();
+    const { name, subject, productId, productInfo, listName, status } = await req.json();
     if (!name || !subject || !productId) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
 
     const docRef = await db.collection('campaigns').add({
@@ -57,6 +65,7 @@ export async function POST(req: Request) {
       subject,
       productId,
       productInfo,
+      listName: listName || '',
       status: status || 'ACTIVE',
       createdAt: new Date()
     });
@@ -90,6 +99,12 @@ export async function DELETE(req: Request) {
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
     await db.collection('campaigns').doc(id).delete();
+    // Ideally delete campaign_leads as well
+    const clSnapshot = await db.collection('campaign_leads').where('campaignId', '==', id).get();
+    const batch = db.batch();
+    clSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+
     return NextResponse.json({ success: true });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

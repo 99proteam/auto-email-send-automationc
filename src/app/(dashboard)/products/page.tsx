@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Package, Plus, Trash2, Bot, Upload, X } from 'lucide-react';
+import { Package, Plus, Trash2, Bot, Upload, X, Edit3, FileText } from 'lucide-react';
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<any[]>([]);
@@ -16,6 +16,11 @@ export default function ProductsPage() {
   const [correction, setCorrection] = useState('');
   const [isCorrecting, setIsCorrecting] = useState(false);
   const [correctionSuccess, setCorrectionSuccess] = useState('');
+
+  // Edit Modal State
+  const [editProduct, setEditProduct] = useState<any | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const editFileInputRef = useRef<HTMLInputElement>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -111,7 +116,7 @@ export default function ProductsPage() {
       if (data.success) {
         setCorrectionSuccess('Correction saved permanently! AI has learned this rule.');
         setCorrection('');
-        fetchProducts(); // Refresh to get updated product
+        fetchProducts();
       } else {
         setCorrectionSuccess('Error: ' + data.error);
       }
@@ -119,6 +124,63 @@ export default function ProductsPage() {
       setCorrectionSuccess('Error: ' + err.message);
     } finally {
       setIsCorrecting(false);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    setIsSaving(true);
+    try {
+      const res = await fetch('/api/products', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editProduct.id,
+          name: editProduct.name,
+          description: editProduct.description,
+          features: typeof editProduct.features === 'string' ? editProduct.features.split(',').map((f: string) => f.trim()) : editProduct.features,
+          pricing_info: editProduct.pricing_info,
+          target_audience: editProduct.target_audience
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEditProduct(null);
+        fetchProducts();
+      } else {
+        alert('Error saving product: ' + data.error);
+      }
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleEditFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsSaving(true);
+    try {
+      const text = await file.text();
+      const res = await fetch('/api/products', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editProduct.id, fileContent: text })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEditProduct({ ...editProduct, ...data.updatedData });
+        alert('Product knowledge updated successfully from file!');
+        fetchProducts();
+      } else {
+        alert('Update failed: ' + data.error);
+      }
+    } catch (err: any) {
+      alert('Upload error: ' + err.message);
+    } finally {
+      setIsSaving(false);
+      if (editFileInputRef.current) editFileInputRef.current.value = '';
     }
   };
 
@@ -144,10 +206,6 @@ export default function ProductsPage() {
           >
             <Upload className="w-5 h-5" />
             {uploading ? 'Analyzing...' : 'Upload TXT Details'}
-          </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors">
-            <Plus className="w-5 h-5" />
-            Add Product
           </button>
         </div>
       </div>
@@ -177,6 +235,12 @@ export default function ProductsPage() {
                 </div>
                 <div className="flex gap-2">
                   <button 
+                    onClick={() => setEditProduct(p)}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 text-gray-300 hover:bg-gray-700 rounded-lg transition-colors text-sm"
+                  >
+                    <Edit3 className="w-4 h-4" /> Edit Data
+                  </button>
+                  <button 
                     onClick={() => { setSelectedProduct(p); setChatMessage(''); setChatReply(''); setCorrection(''); setCorrectionSuccess(''); }}
                     className="flex items-center gap-2 px-3 py-1.5 bg-purple-600/20 text-purple-400 hover:bg-purple-600/30 border border-purple-500/20 rounded-lg transition-colors text-sm"
                   >
@@ -192,14 +256,65 @@ export default function ProductsPage() {
                   <span key={i} className="px-2 py-1 bg-gray-800 text-gray-300 text-xs rounded-md">{f}</span>
                 ))}
               </div>
-              {p.corrections && (
-                <div className="mt-2 p-3 bg-blue-900/20 border border-blue-500/20 rounded-lg">
-                  <p className="text-xs font-semibold text-blue-400 mb-1">AI Corrections Learned:</p>
-                  <p className="text-xs text-blue-200 whitespace-pre-wrap">{p.corrections}</p>
-                </div>
-              )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {editProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-800/50">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-blue-400" /> Edit Product: {editProduct.name}
+              </h2>
+              <button onClick={() => setEditProduct(null)} className="text-gray-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+              <div className="flex justify-between items-center bg-blue-900/10 border border-blue-500/20 p-4 rounded-xl">
+                <div>
+                  <h4 className="text-sm font-semibold text-white">Upload New Context</h4>
+                  <p className="text-xs text-gray-400 mt-1">Upload a TXT file to automatically extract and update this product's details.</p>
+                </div>
+                <input type="file" accept=".txt,.md" className="hidden" ref={editFileInputRef} onChange={handleEditFileUpload} />
+                <button onClick={() => editFileInputRef.current?.click()} disabled={isSaving} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm disabled:opacity-50 flex items-center gap-2">
+                  <FileText className="w-4 h-4" /> {isSaving ? 'Updating...' : 'Upload TXT'}
+                </button>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">Product Name</label>
+                <input type="text" value={editProduct.name} onChange={e => setEditProduct({...editProduct, name: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">Description</label>
+                <textarea value={editProduct.description} onChange={e => setEditProduct({...editProduct, description: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 h-24" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">Features (comma separated)</label>
+                <textarea value={Array.isArray(editProduct.features) ? editProduct.features.join(', ') : editProduct.features} onChange={e => setEditProduct({...editProduct, features: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 h-20" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">Pricing Info</label>
+                <input type="text" value={editProduct.pricing_info} onChange={e => setEditProduct({...editProduct, pricing_info: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">Target Audience</label>
+                <input type="text" value={editProduct.target_audience} onChange={e => setEditProduct({...editProduct, target_audience: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500" />
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-gray-800 flex justify-end gap-3">
+              <button onClick={() => setEditProduct(null)} className="px-4 py-2 text-gray-400 hover:text-white">Cancel</button>
+              <button onClick={handleSaveEdit} disabled={isSaving} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl disabled:opacity-50">
+                {isSaving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
