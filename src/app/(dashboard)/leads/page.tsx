@@ -1,14 +1,21 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Users, UploadCloud, Trash2, X, FileText, Filter } from 'lucide-react';
+import { Users, UploadCloud, Trash2, X, FileText, Filter, Plus } from 'lucide-react';
 
 export default function LeadsPage() {
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // CSV Upload State
   const [showPreview, setShowPreview] = useState(false);
   const [parsedLeads, setParsedLeads] = useState<any[]>([]);
+  
+  // Manual Entry State
+  const [showManualEntry, setShowManualEntry] = useState(false);
+  const [manualEmails, setManualEmails] = useState('');
+
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState('');
   const [listName, setListName] = useState('');
@@ -73,6 +80,39 @@ export default function LeadsPage() {
     }
   };
 
+  const handleManualUpload = async () => {
+    if (!listName.trim()) return alert("Please provide a List Name");
+    if (!manualEmails.trim()) return alert("Please provide some emails");
+    
+    const lines = manualEmails.split(/[\n,]+/).map(l => l.trim()).filter(l => l.length > 0 && l.includes('@'));
+    const parsed = lines.map(email => ({ email, name: '', company: '' }));
+    
+    if (parsed.length === 0) return alert("No valid emails found");
+
+    setUploading(true);
+    setUploadResult('');
+    try {
+      const res = await fetch('/api/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leads: parsed, listName: listName.trim() })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setUploadResult(`Added ${data.count} leads (${data.skipped} skipped)`);
+        setShowManualEntry(false);
+        setManualEmails('');
+        fetchLeads();
+      } else {
+        setUploadResult('Error: ' + data.error);
+      }
+    } catch (err: any) {
+      setUploadResult('Error: ' + err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this lead?')) return;
     try {
@@ -90,13 +130,63 @@ export default function LeadsPage() {
         </div>
         <div className="flex gap-3 items-center">
           {uploadResult && <span className="text-sm text-emerald-400">{uploadResult}</span>}
+          <button 
+            onClick={() => { setListName(`List - ${new Date().toLocaleDateString()}`); setShowManualEntry(true); }} 
+            className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl transition-colors font-medium border border-gray-700"
+          >
+            <Plus className="w-4 h-4" />
+            Manual Entry
+          </button>
           <input type="file" accept=".csv,.txt" className="hidden" ref={fileInputRef} onChange={handleFileSelect} />
           <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors font-medium">
             <UploadCloud className="w-4 h-4" />
-            Upload CSV
+            Upload CSV / TXT
           </button>
         </div>
       </div>
+
+      {/* Manual Entry Modal */}
+      {showManualEntry && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-lg overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-800/50">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <Plus className="w-5 h-5 text-emerald-400" /> Create List Manually
+              </h2>
+              <button onClick={() => setShowManualEntry(false)} className="text-gray-400 hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">List Name:</label>
+                <input 
+                  type="text" 
+                  value={listName} 
+                  onChange={e => setListName(e.target.value)}
+                  placeholder="e.g. Test Group A"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">Emails (one per line, or comma separated):</label>
+                <textarea 
+                  value={manualEmails}
+                  onChange={e => setManualEmails(e.target.value)}
+                  placeholder="ceo@example.com&#10;sales@example.com"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 h-48 resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-gray-800 flex justify-end gap-3">
+              <button onClick={() => setShowManualEntry(false)} className="px-4 py-2 text-gray-400 hover:text-white">Cancel</button>
+              <button onClick={handleManualUpload} disabled={uploading || !listName.trim() || !manualEmails.trim()} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl disabled:opacity-50">
+                {uploading ? 'Saving...' : 'Create List'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* CSV Preview Modal */}
       {showPreview && (
@@ -165,7 +255,7 @@ export default function LeadsPage() {
             <Users className="w-8 h-8" />
           </div>
           <h3 className="text-xl font-bold text-white">No Leads Found</h3>
-          <p className="text-gray-400 mt-2 max-w-sm">Upload a CSV file with email addresses to start targeting potential customers.</p>
+          <p className="text-gray-400 mt-2 max-w-sm">Upload a CSV/TXT file or add emails manually to start targeting potential customers.</p>
         </div>
       ) : (
         <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
