@@ -17,7 +17,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: 'Lead not found' });
     }
 
-    const leadData = { id: doc.id, ...doc.data() };
+    const leadData: any = { id: doc.id, ...doc.data() };
     
     // Attempt to fetch name from leads collection if not present
     if (!leadData.name && leadData.leadId) {
