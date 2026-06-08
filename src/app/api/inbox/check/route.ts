@@ -51,7 +51,7 @@ export async function POST() {
         await connection.openBox('INBOX');
 
         // Search for UNREAD emails
-        const searchCriteria = ['UNREAD'];
+        const searchCriteria = ['UNSEEN'];
         const fetchOptions = { bodies: ['HEADER', 'TEXT'], struct: true, markSeen: false };
         const messages = await connection.search(searchCriteria, fetchOptions);
 
