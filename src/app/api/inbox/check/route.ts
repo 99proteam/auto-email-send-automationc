@@ -119,7 +119,7 @@ export async function POST() {
             // Find the most recently contacted campaign for this lead
             const clSnapshot = await db.collection('campaign_leads')
               .where('email', '==', senderEmail)
-              .where('status', 'in', ['CONTACTED', 'AI_RESPONDED'])
+              .where('status', 'in', ['CONTACTED', 'AI_RESPONDED', 'REPLIED'])
               .orderBy('lastContactedAt', 'desc')
               .limit(1)
               .get();
@@ -170,7 +170,7 @@ export async function POST() {
                  diagnostics.push(`MSG ${id}: Ignored - Email ${senderEmail} not found in any campaign`);
               } else {
                  const stats = checkAny.docs.map(d => d.data().status).join(',');
-                 diagnostics.push(`MSG ${id}: Ignored - Email ${senderEmail} exists but status is [${stats}], needs to be CONTACTED or AI_RESPONDED`);
+                 diagnostics.push(`MSG ${id}: Ignored - Email ${senderEmail} exists but status is [${stats}], needs to be CONTACTED, AI_RESPONDED, or REPLIED`);
               }
               // Do we mark it as seen? Let's leave it unseen so they don't lose it if it's important manual mail
             }
