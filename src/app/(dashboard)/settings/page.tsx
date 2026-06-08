@@ -155,7 +155,7 @@ export default function SettingsPage() {
       if (data.success) {
         setServers(data.servers);
         setShowAddServer(false);
-        setNewServer({ host: '', port: '465', user: '', pass: '', secure: true });
+        setNewServer({ host: '', port: '465', user: '', pass: '', secure: true, dailyLimit: '50' });
       }
     } catch (err) {
       console.error(err);
