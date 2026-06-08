@@ -7,6 +7,14 @@ export async function POST(request: Request) {
   if (!db) return NextResponse.json({ error: 'Firebase not configured' }, { status: 500 });
 
   try {
+    let targetCampaignId = null;
+    try {
+      const body = await request.json();
+      targetCampaignId = body.campaignId;
+    } catch (e) {
+      // ignore
+    }
+
     // 1. Fetch settings
     const smtpSnapshot = await db.collection('settings').doc('smtp').get();
     const smtpServers = smtpSnapshot.exists ? smtpSnapshot.data()?.servers || [] : [];
@@ -28,13 +36,25 @@ export async function POST(request: Request) {
     let serverStats = statsData?.servers || {};
 
     // 3. Fetch active campaigns
-    const campaignsSnapshot = await db.collection('campaigns').where('status', '==', 'ACTIVE').get();
+    let campaignsSnapshot;
+    if (targetCampaignId) {
+      // Specific campaign run
+      const cRef = await db.collection('campaigns').doc(targetCampaignId).get();
+      if (!cRef.exists || cRef.data()?.status !== 'ACTIVE') {
+        return NextResponse.json({ success: false, message: 'Campaign is not active or does not exist.' });
+      }
+      campaignsSnapshot = { docs: [cRef] };
+    } else {
+      // Cron job run all
+      campaignsSnapshot = await db.collection('campaigns').where('status', '==', 'ACTIVE').get();
+    }
+    
     let smtpIndex = 0;
     let limitReached = false;
 
     for (const doc of campaignsSnapshot.docs) {
       if (limitReached) break;
-      const campaign = doc.data();
+      const campaign = doc.data() as any;
       const campaignId = doc.id;
       if (!campaign.listName) continue;
       
@@ -99,12 +119,16 @@ export async function POST(request: Request) {
           await sendEmail(availableSmtp, lead.email, campaign.subject || 'Special Offer', draft || '');
           emailSent = true;
 
+          const newHistory = clData.history || [];
+          newHistory.push({ type: 'SENT', subject: campaign.subject || 'Special Offer', body: draft, sentAt: now.toISOString() });
+
           await clRef.set({
             ...clData,
             status: 'CONTACTED',
             firstContactedAt: now,
             lastContactedAt: now,
-            threadId: lead.email
+            threadId: lead.email,
+            history: newHistory
           });
         } 
         else if (clData.status === 'CONTACTED' || clData.status === 'AI_RESPONDED') {
@@ -117,14 +141,19 @@ export async function POST(request: Request) {
             const currentFollowUpCount = clData.followUpCount || 0;
             
             if (currentFollowUpCount < maxFollowUps) {
+              const followUpSubject = `Re: ${campaign.subject || 'Special Offer'}`;
               const followUpDraft = await generateFollowUpDraft(campaign.productInfo, lead, currentFollowUpCount + 1);
-              await sendEmail(availableSmtp, lead.email, `Re: ${campaign.subject || 'Special Offer'}`, followUpDraft || '');
+              await sendEmail(availableSmtp, lead.email, followUpSubject, followUpDraft || '');
               emailSent = true;
+
+              const newHistory = clData.history || [];
+              newHistory.push({ type: 'SENT', subject: followUpSubject, body: followUpDraft, sentAt: now.toISOString() });
 
               await clRef.update({
                 lastContactedAt: now,
                 followUpCount: currentFollowUpCount + 1,
-                status: 'CONTACTED'
+                status: 'CONTACTED',
+                history: newHistory
               });
             } else {
               await clRef.update({ status: 'DEAD' });

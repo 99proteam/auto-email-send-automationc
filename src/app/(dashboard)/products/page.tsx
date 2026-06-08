@@ -277,12 +277,12 @@ export default function ProductsPage() {
             <div className="p-6 overflow-y-auto flex-1 space-y-4">
               <div className="flex justify-between items-center bg-blue-900/10 border border-blue-500/20 p-4 rounded-xl">
                 <div>
-                  <h4 className="text-sm font-semibold text-white">Upload New Context</h4>
-                  <p className="text-xs text-gray-400 mt-1">Upload a TXT file to automatically extract and update this product's details.</p>
+                  <h4 className="text-sm font-semibold text-white">Append Additional Context</h4>
+                  <p className="text-xs text-gray-400 mt-1">Upload a TXT file to automatically extract and append new details to this product.</p>
                 </div>
                 <input type="file" accept=".txt,.md" className="hidden" ref={editFileInputRef} onChange={handleEditFileUpload} />
-                <button onClick={() => editFileInputRef.current?.click()} disabled={isSaving} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm disabled:opacity-50 flex items-center gap-2">
-                  <FileText className="w-4 h-4" /> {isSaving ? 'Updating...' : 'Upload TXT'}
+                <button onClick={() => editFileInputRef.current?.click()} disabled={isSaving} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm disabled:opacity-50 flex items-center gap-2 whitespace-nowrap">
+                  <FileText className="w-4 h-4" /> {isSaving ? 'Appending...' : 'Append TXT Data'}
                 </button>
               </div>
 

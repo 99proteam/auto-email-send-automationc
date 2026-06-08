@@ -120,8 +120,12 @@ export async function POST() {
             if (!clSnapshot.empty) {
               const clDoc = clSnapshot.docs[0];
               const clData = clDoc.data();
+              const newHistory = clData.history || [];
+              
+              // Append received message
+              newHistory.push({ type: 'RECEIVED', subject: parsed.subject || '', body: parsed.text || '', receivedAt: new Date().toISOString() });
 
-              await clDoc.ref.update({ status: 'REPLIED' });
+              await clDoc.ref.update({ status: 'REPLIED', history: newHistory });
 
               const campaignDoc = await db.collection('campaigns').doc(clData.campaignId).get();
               
@@ -136,12 +140,16 @@ export async function POST() {
 
                  if (aiReply && !aiReply.includes('REQUIRES_MANUAL_INTERVENTION')) {
                     const smtpConfig = smtpServers[0];
-                    await sendEmail(smtpConfig, senderEmail, `Re: ${campaign?.subject || 'Special Offer'}`, aiReply || '');
+                    const replySubject = `Re: ${campaign?.subject || 'Special Offer'}`;
+                    await sendEmail(smtpConfig, senderEmail, replySubject, aiReply || '');
                     
+                    newHistory.push({ type: 'SENT', subject: replySubject, body: aiReply, sentAt: new Date().toISOString() });
+
                     await clDoc.ref.update({ 
                       status: 'AI_RESPONDED',
                       lastContactedAt: new Date(),
-                      followUpCount: (clData.followUpCount || 0) + 1
+                      followUpCount: (clData.followUpCount || 0) + 1,
+                      history: newHistory
                     });
                  }
               }

@@ -86,14 +86,27 @@ export async function PATCH(req: Request) {
       if (!apiKey) return NextResponse.json({ error: 'Missing Gemini key.' }, { status: 400 });
       const ai = new GoogleGenAI({ apiKey });
       
+      const productDoc = await db.collection('products').doc(id).get();
+      const existingProduct = productDoc.data() || {};
+
       const prompt = `
-        You are an expert product analyst. Extract product information from the following text into a JSON object.
-        The object must have: "description", "features" (array of strings), "pricing_info", and "target_audience".
-        This is for an existing product, so focus on updating the knowledge based on this text.
-        Return ONLY a raw JSON object.
+        You are an expert product analyst. The user has uploaded new documentation for an existing product.
+        Your task is to MERGE the new information from the text with the existing product knowledge below.
+        DO NOT replace the existing features; APPEND any new features you find in the text to the existing array.
+        Update the description, pricing_info, and target_audience if the new text provides better or more up-to-date information.
         
-        Text:
+        Existing Knowledge:
+        ${JSON.stringify({
+          description: existingProduct.description,
+          features: existingProduct.features,
+          pricing_info: existingProduct.pricing_info,
+          target_audience: existingProduct.target_audience
+        }, null, 2)}
+        
+        New Text to Merge:
         ${fileContent.substring(0, 30000)}
+        
+        Return ONLY a raw JSON object with: "description", "features" (array of strings), "pricing_info", and "target_audience".
       `;
 
       const response = await callWithRetry(() => ai.models.generateContent({
