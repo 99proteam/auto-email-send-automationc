@@ -35,6 +35,10 @@ export async function POST(request: Request) {
     let globalSent = statsData?.globalSent || 0;
     let serverStats = statsData?.servers || {};
 
+    // Limit per execution to prevent Vercel timeouts (e.g., max 15 emails per cron run)
+    const MAX_PER_RUN = 15;
+    let runSentCount = 0;
+
     // 3. Fetch active campaigns
     let campaignsSnapshot;
     if (targetCampaignId) {
@@ -63,7 +67,7 @@ export async function POST(request: Request) {
         .get();
 
       for (const leadDoc of leadsSnapshot.docs) {
-        if (globalSent >= globalDailyLimit) {
+        if (globalSent >= globalDailyLimit || runSentCount >= MAX_PER_RUN) {
           limitReached = true;
           break;
         }
@@ -163,6 +167,7 @@ export async function POST(request: Request) {
 
         if (emailSent) {
           globalSent++;
+          runSentCount++;
           serverStats[smtpId] = (serverStats[smtpId] || 0) + 1;
           smtpIndex++;
         }
