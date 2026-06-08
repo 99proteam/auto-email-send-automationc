@@ -15,13 +15,14 @@ export default function SettingsPage() {
   // Automation Settings
   const [followUpDelayDays, setFollowUpDelayDays] = useState(3);
   const [maxFollowUps, setMaxFollowUps] = useState(3);
+  const [globalDailyLimit, setGlobalDailyLimit] = useState(500);
   const [isSavingAutomation, setIsSavingAutomation] = useState(false);
   const [automationResult, setAutomationResult] = useState('');
 
   // SMTP Settings
   const [servers, setServers] = useState<any[]>([]);
   const [showAddServer, setShowAddServer] = useState(false);
-  const [newServer, setNewServer] = useState({ host: '', port: '465', user: '', pass: '', secure: true });
+  const [newServer, setNewServer] = useState({ host: '', port: '465', user: '', pass: '', secure: true, dailyLimit: '50' });
   const [isSavingServer, setIsSavingServer] = useState(false);
 
   // IMAP Settings
@@ -34,6 +35,7 @@ export default function SettingsPage() {
       if (data.success && data.settings) {
         setFollowUpDelayDays(data.settings.followUpDelayDays || 3);
         setMaxFollowUps(data.settings.maxFollowUps || 3);
+        setGlobalDailyLimit(data.settings.globalDailyLimit || 500);
       }
     });
 
@@ -128,7 +130,7 @@ export default function SettingsPage() {
       const res = await fetch('/api/settings/automation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ followUpDelayDays, maxFollowUps })
+        body: JSON.stringify({ followUpDelayDays, maxFollowUps, globalDailyLimit })
       });
       const data = await res.json();
       if (data.success) setAutomationResult('Saved successfully!');
@@ -246,7 +248,7 @@ export default function SettingsPage() {
             </div>
           </div>
           
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-3 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-400 mb-2">Follow-Up Delay (Days):</label>
               <p className="text-xs text-gray-500 mb-2">How many days to wait before following up if the lead ignores you.</p>
@@ -266,6 +268,17 @@ export default function SettingsPage() {
                 min="0"
                 value={maxFollowUps}
                 onChange={(e) => setMaxFollowUps(parseInt(e.target.value))}
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Global Daily Limit:</label>
+              <p className="text-xs text-gray-500 mb-2">Maximum number of total emails to send per day across all campaigns.</p>
+              <input 
+                type="number" 
+                min="1"
+                value={globalDailyLimit}
+                onChange={(e) => setGlobalDailyLimit(parseInt(e.target.value))}
                 className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500"
               />
             </div>
@@ -353,6 +366,7 @@ export default function SettingsPage() {
                 <input type="number" placeholder="Port (e.g., 465)" value={newServer.port} onChange={e => setNewServer({...newServer, port: e.target.value})} className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
                 <input type="email" placeholder="Username/Email" value={newServer.user} onChange={e => setNewServer({...newServer, user: e.target.value})} className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
                 <input type="password" placeholder="Password / App Password" value={newServer.pass} onChange={e => setNewServer({...newServer, pass: e.target.value})} className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
+                <input type="number" placeholder="Daily Limit (e.g. 50)" value={newServer.dailyLimit} onChange={e => setNewServer({...newServer, dailyLimit: e.target.value})} className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" title="Maximum emails to send per day from this server" />
               </div>
               <div className="flex justify-end gap-2">
                 <button onClick={() => setShowAddServer(false)} className="px-3 py-1.5 text-sm text-gray-400 hover:text-white">Cancel</button>
@@ -373,7 +387,7 @@ export default function SettingsPage() {
                 <div key={i} className="flex justify-between items-center p-3 bg-gray-800 rounded-xl border border-gray-700">
                   <div>
                     <span className="text-white font-medium text-sm">{s.host}:{s.port}</span>
-                    <span className="text-gray-400 text-xs ml-3">{s.user}</span>
+                    <div className="text-sm text-gray-400 mt-1">{s.user} • Limit: {s.dailyLimit || 50}/day</div>
                   </div>
                   <button onClick={() => handleDeleteServer(i)} className="text-red-400 hover:bg-red-500/10 p-1.5 rounded-lg transition-colors">
                     <Trash2 className="w-4 h-4" />

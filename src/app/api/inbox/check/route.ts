@@ -68,6 +68,40 @@ export async function POST() {
         // Clean up email to prevent duplicates or weird formats
         senderEmail = senderEmail.toLowerCase().trim();
 
+        // Check if it's a BOUNCE
+        const isBounce = 
+          senderEmail.includes('mailer-daemon') || 
+          senderEmail.includes('postmaster') || 
+          parsed.subject?.toLowerCase().includes('delivery status notification') ||
+          parsed.subject?.toLowerCase().includes('undeliverable') ||
+          parsed.subject?.toLowerCase().includes('failure notice');
+
+        if (isBounce) {
+          // Extract all email addresses from the bounce message body
+          const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi;
+          const textBody = parsed.text || '';
+          const matches = [...textBody.matchAll(emailRegex)].map(m => m[1].toLowerCase());
+          
+          let bouncedLeadFound = false;
+          for (const potentialEmail of matches) {
+            // Avoid our own email addresses
+            if (potentialEmail.includes('mailer-daemon') || potentialEmail.includes('postmaster')) continue;
+            
+            const bounceLeadsSnapshot = await db.collection('leads').where('email', '==', potentialEmail).limit(1).get();
+            if (!bounceLeadsSnapshot.empty) {
+              const bouncedLeadDoc = bounceLeadsSnapshot.docs[0];
+              await bouncedLeadDoc.ref.update({ status: 'BOUNCED' });
+              bouncedLeadFound = true;
+              break;
+            }
+          }
+
+          // Mark bounce email as read and skip normal processing
+          await connection.addFlags(id, ['\\Seen']);
+          processedCount++;
+          continue;
+        }
+
         // Find the lead in our database
         const leadsSnapshot = await db.collection('leads')
           .where('email', '==', senderEmail)

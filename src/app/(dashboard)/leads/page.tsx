@@ -68,7 +68,9 @@ export default function LeadsPage() {
                   <tr key={lead.id} className="text-gray-300 text-sm hover:bg-gray-800/20">
                     <td className="p-4">{lead.email}</td>
                     <td className="p-4">
-                      <span className="px-2 py-1 bg-gray-800 text-gray-300 rounded text-xs">{lead.status}</span>
+                      <span className={`px-2 py-1 rounded text-xs ${lead.status === 'BOUNCED' ? 'bg-red-500/20 text-red-400 font-bold border border-red-500/30' : 'bg-gray-800 text-gray-300'}`}>
+                        {lead.status}
+                      </span>
                     </td>
                     <td className="p-4 flex items-center gap-2">
                       <Mail className="w-4 h-4 text-gray-500" />

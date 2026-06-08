@@ -15,8 +15,18 @@ export async function GET() {
 export async function POST(req: Request) {
   if (!db) return NextResponse.json({ error: 'DB not configured' }, { status: 500 });
   try {
-    const { server } = await req.json();
-    if (!server || !server.host || !server.user) return NextResponse.json({ error: 'Missing server details' }, { status: 400 });
+    const body = await req.json();
+    const { host, port, user, pass, secure, dailyLimit } = body;
+    if (!host || !port || !user || !pass) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
+
+    const server = {
+      host,
+      port: parseInt(port),
+      user,
+      pass,
+      secure: !!secure,
+      dailyLimit: parseInt(dailyLimit) || 50
+    };
 
     const docRef = db.collection('settings').doc('smtp');
     const doc = await docRef.get();

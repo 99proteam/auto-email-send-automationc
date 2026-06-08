@@ -5,7 +5,12 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Paths that do not require authentication
-  if (pathname === '/login' || pathname.startsWith('/api/auth')) {
+  if (
+    pathname === '/login' || 
+    pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/api/campaign/run') ||
+    pathname.startsWith('/api/inbox/check')
+  ) {
     return NextResponse.next();
   }
 

@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# Firebase
+autoemailleadgen-firebase-adminsdk-*.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
