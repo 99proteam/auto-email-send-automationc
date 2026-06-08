@@ -2,6 +2,18 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebaseAdmin';
 import { GoogleGenAI } from '@google/genai';
 
+async function callWithRetry(fn: () => Promise<any>, retries = 3, delay = 2000): Promise<any> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      const isRetryable = err?.message?.includes('503') || err?.message?.includes('UNAVAILABLE') || err?.message?.includes('high demand');
+      if (!isRetryable || i === retries - 1) throw err;
+      await new Promise(r => setTimeout(r, delay * Math.pow(2, i)));
+    }
+  }
+}
+
 export async function POST(req: Request) {
   if (!db) return NextResponse.json({ error: 'DB not configured' }, { status: 500 });
   
@@ -41,10 +53,10 @@ export async function POST(req: Request) {
       Reply professionally, convincingly, and directly answer their question based ONLY on the provided information and instructions.
     `;
 
-    const response = await ai.models.generateContent({
+    const response = await callWithRetry(() => ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
-    });
+    }));
 
     return NextResponse.json({ success: true, reply: response.text });
   } catch (err: any) {
@@ -52,3 +64,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+

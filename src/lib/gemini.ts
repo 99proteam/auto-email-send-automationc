@@ -1,6 +1,18 @@
 import { GoogleGenAI } from '@google/genai';
 import { db } from './firebaseAdmin';
 
+async function callWithRetry(fn: () => Promise<any>, retries = 3, delay = 2000): Promise<any> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      const isRetryable = err?.message?.includes('503') || err?.message?.includes('UNAVAILABLE') || err?.message?.includes('high demand');
+      if (!isRetryable || i === retries - 1) throw err;
+      await new Promise(r => setTimeout(r, delay * Math.pow(2, i)));
+    }
+  }
+}
+
 export async function getGeminiClient() {
   let apiKey = process.env.GEMINI_API_KEY;
 
@@ -24,10 +36,10 @@ export async function generateEmailDraft(productInfo: string, leadInfo: any) {
 Product context: ${productInfo}
 The goal is to convert them to a customer. Include a call to action. Keep it concise.`;
 
-  const response = await ai.models.generateContent({
+  const response = await callWithRetry(() => ai.models.generateContent({
     model: 'gemini-2.5-flash',
     contents: prompt,
-  });
+  }));
 
   return response.text;
 }
@@ -41,10 +53,10 @@ Lead Reply: ${replyBody}
 
 Analyze the reply. If they are asking a question, answer it based on the Product Info. If they ask for a discount, you can offer a 10% coupon: "WELCOME10". If the question is entirely unrelated or unanswerable based on the context, reply exactly with: "REQUIRES_MANUAL_INTERVENTION". Otherwise, write a polite and persuasive response to convert them to a customer.`;
 
-  const response = await ai.models.generateContent({
+  const response = await callWithRetry(() => ai.models.generateContent({
     model: 'gemini-2.5-flash',
     contents: prompt,
-  });
+  }));
 
   return response.text;
 }
@@ -56,10 +68,10 @@ Product context: ${productInfo}
 This is follow-up email number ${followUpCount}.
 Write a polite, concise follow-up email to check in. Try to provide a little more value or a quick question to prompt a response. Keep it short.`;
 
-  const response = await ai.models.generateContent({
+  const response = await callWithRetry(() => ai.models.generateContent({
     model: 'gemini-2.5-flash',
     contents: prompt,
-  });
+  }));
 
   return response.text;
 }
