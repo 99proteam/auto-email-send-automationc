@@ -59,6 +59,21 @@ export default function LeadsPage() {
     setUploading(true);
     setUploadResult('');
     try {
+      // Check for unsubscribed emails
+      const unsubRes = await fetch('/api/unsubscribes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emails: parsedLeads.map(l => l.email) })
+      });
+      const unsubData = await unsubRes.json();
+      if (unsubData.success && unsubData.unsubscribed && unsubData.unsubscribed.length > 0) {
+        const proceed = confirm(`WARNING: ${unsubData.unsubscribed.length} of these emails have previously unsubscribed.\n\nAdding them to a new list could lead to spam complaints.\n\nDo you want to proceed anyway?`);
+        if (!proceed) {
+          setUploading(false);
+          return;
+        }
+      }
+
       const res = await fetch('/api/leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -92,6 +107,21 @@ export default function LeadsPage() {
     setUploading(true);
     setUploadResult('');
     try {
+      // Check for unsubscribed emails
+      const unsubRes = await fetch('/api/unsubscribes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emails: parsed.map(l => l.email) })
+      });
+      const unsubData = await unsubRes.json();
+      if (unsubData.success && unsubData.unsubscribed && unsubData.unsubscribed.length > 0) {
+        const proceed = confirm(`WARNING: ${unsubData.unsubscribed.length} of these emails have previously unsubscribed.\n\nAdding them to a new list could lead to spam complaints.\n\nDo you want to proceed anyway?`);
+        if (!proceed) {
+          setUploading(false);
+          return;
+        }
+      }
+
       const res = await fetch('/api/leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

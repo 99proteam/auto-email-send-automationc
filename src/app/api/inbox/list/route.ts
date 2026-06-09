@@ -5,17 +5,22 @@ export async function GET() {
   if (!db) return NextResponse.json({ error: 'Firebase not configured' }, { status: 500 });
 
   try {
+    // Fetch leads that have received replies (any status with history)
     const snapshot = await db.collection('campaign_leads')
-      .where('status', '==', 'REPLIED')
+      .where('status', 'in', ['NEEDS_REVIEW', 'REPLIED', 'AI_RESPONDED', 'CONTACTED'])
       .orderBy('lastContactedAt', 'desc')
-      .limit(50)
+      .limit(100)
       .get();
 
     const leads = [];
     for (const doc of snapshot.docs) {
       const data = doc.data();
+
+      // Only include leads that have at least one RECEIVED message in history
+      const hasReceived = (data.history || []).some((h: any) => h.type === 'RECEIVED');
+      if (!hasReceived) continue;
+
       let campaignName = 'Unknown';
-      
       if (data.campaignId) {
         const cDoc = await db.collection('campaigns').doc(data.campaignId).get();
         if (cDoc.exists) campaignName = cDoc.data()?.name || 'Unknown';

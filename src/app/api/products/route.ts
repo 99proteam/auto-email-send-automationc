@@ -129,6 +129,7 @@ export async function PATCH(req: Request) {
       if (pricing_info !== undefined) updateData.pricing_info = pricing_info;
       if (target_audience !== undefined) updateData.target_audience = target_audience;
       if (url !== undefined) updateData.url = url;
+      if (body.customFields !== undefined) updateData.customFields = body.customFields;
       
       await db.collection('products').doc(id).update(updateData);
       return NextResponse.json({ success: true });

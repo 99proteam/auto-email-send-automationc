@@ -30,11 +30,53 @@ export async function getGeminiClient() {
   return new GoogleGenAI({ apiKey });
 }
 
-export async function generateEmailDraft(productInfo: string, leadInfo: any) {
+function buildProductContext(product: any): string {
+  let context = '';
+  if (product.name) context += `Product Name: ${product.name}\n`;
+  if (product.url) context += `Product URL: ${product.url}\n`;
+  if (product.description) context += `Description: ${product.description}\n`;
+  if (product.pricing_info) context += `Pricing: ${product.pricing_info}\n`;
+  if (product.target_audience) context += `Target Audience: ${product.target_audience}\n`;
+  if (product.features && Array.isArray(product.features)) {
+    context += `Features: ${product.features.join(', ')}\n`;
+  }
+  // Custom fields added by user (coupon, payment link, etc.)
+  if (product.customFields && Array.isArray(product.customFields)) {
+    for (const field of product.customFields) {
+      context += `${field.title}: ${field.value || ''}${field.link ? ' — Link: ' + field.link : ''}\n`;
+    }
+  }
+  return context;
+}
+
+export async function getFullProductContext(productId: string): Promise<string> {
+  if (!db || !productId) return '';
+  try {
+    const doc = await db.collection('products').doc(productId).get();
+    if (!doc.exists) return '';
+    return buildProductContext({ id: doc.id, ...doc.data() });
+  } catch {
+    return '';
+  }
+}
+
+export async function generateEmailDraft(productContext: string, leadInfo: any) {
   const ai = await getGeminiClient();
-  const prompt = `You are a professional sales representative. Write a compelling, personalized email to ${leadInfo.name || leadInfo.email}. 
-Product context: ${productInfo}
-The goal is to convert them to a customer. Include a call to action. Keep it concise.`;
+  const prompt = `You are a professional sales representative. Write a compelling, personalized cold outreach email to ${leadInfo.name || leadInfo.email}.
+
+IMPORTANT RULES:
+- NEVER write placeholder text like "[Link to Product Page]" or "[Your Name]" or "[Company]".
+- If a Product URL is provided below, use that EXACT URL in the email.
+- If pricing is provided, mention the actual price.
+- If a coupon code is provided, you may mention it as a special offer.
+- Keep the email concise, professional, and persuasive.
+- Include a clear call to action with the actual product link.
+- Write the email body only, no subject line.
+
+Product Information:
+${productContext}
+
+The goal is to convert them to a customer.`;
 
   const response = await callWithRetry(() => ai.models.generateContent({
     model: 'gemini-2.5-flash',
@@ -44,14 +86,30 @@ The goal is to convert them to a customer. Include a call to action. Keep it con
   return response.text;
 }
 
-export async function analyzeReplyAndRespond(replyBody: string, previousContext: string, productInfo: string) {
+export async function analyzeReplyAndRespond(replyBody: string, threadHistory: string, productContext: string) {
   const ai = await getGeminiClient();
-  const prompt = `You are a professional sales representative. A lead has replied to our promotional email.
-Previous Context: ${previousContext}
-Product Info: ${productInfo}
-Lead Reply: ${replyBody}
+  const prompt = `You are a professional sales representative handling an ongoing email conversation with a potential customer.
 
-Analyze the reply. If they are asking a question, answer it based on the Product Info. If they ask for a discount, you can offer a 10% coupon: "WELCOME10". If the question is entirely unrelated or unanswerable based on the context, reply exactly with: "REQUIRES_MANUAL_INTERVENTION". Otherwise, write a polite and persuasive response to convert them to a customer.`;
+IMPORTANT RULES:
+- NEVER write placeholder text like "[Link to Product Page]" or "[Your Name]" or "[Company]".
+- If a Product URL is provided, use that EXACT URL when they ask for links.
+- If pricing info is provided, give the ACTUAL price when asked.
+- If a coupon/discount code is available, offer it when appropriate.
+- If a payment link is available, share it when they want to buy.
+- Write naturally and professionally. No brackets or placeholders.
+- If the question is COMPLETELY unrelated to the product or you genuinely cannot answer it from the provided context, reply EXACTLY with: "REQUIRES_MANUAL_INTERVENTION"
+- Otherwise, ALWAYS provide a helpful response. You have all the product info you need below.
+
+Product Information:
+${productContext}
+
+Conversation History:
+${threadHistory}
+
+Latest Reply from Lead:
+${replyBody}
+
+Write a polite, helpful, and persuasive response. Use actual links and prices from the product info above.`;
 
   const response = await callWithRetry(() => ai.models.generateContent({
     model: 'gemini-2.5-flash',
@@ -61,12 +119,21 @@ Analyze the reply. If they are asking a question, answer it based on the Product
   return response.text;
 }
 
-export async function generateFollowUpDraft(productInfo: string, leadInfo: any, followUpCount: number) {
+export async function generateFollowUpDraft(productContext: string, leadInfo: any, followUpCount: number) {
   const ai = await getGeminiClient();
-  const prompt = `You are a professional sales representative. You previously emailed ${leadInfo.name || leadInfo.email} about the following product but they haven't replied.
-Product context: ${productInfo}
-This is follow-up email number ${followUpCount}.
-Write a polite, concise follow-up email to check in. Try to provide a little more value or a quick question to prompt a response. Keep it short.`;
+  const prompt = `You are a professional sales representative. You previously emailed ${leadInfo.name || leadInfo.email} about a product but they haven't replied.
+
+IMPORTANT RULES:
+- NEVER write placeholder text like "[Link to Product Page]" or "[Your Name]".
+- Use the actual product URL and pricing from the info below.
+- This is follow-up email number ${followUpCount}.
+- Keep it short, polite, and add a little more value each time.
+- Include the actual product link.
+
+Product Information:
+${productContext}
+
+Write a concise follow-up email.`;
 
   const response = await callWithRetry(() => ai.models.generateContent({
     model: 'gemini-2.5-flash',

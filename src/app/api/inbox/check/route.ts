@@ -2,26 +2,23 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebaseAdmin';
 import { simpleParser } from 'mailparser';
 import * as imaps from 'imap-simple';
-import { analyzeReplyAndRespond } from '@/lib/gemini';
+import { analyzeReplyAndRespond, getFullProductContext } from '@/lib/gemini';
 import { sendEmail } from '@/lib/email';
 
 export async function POST() {
   if (!db) return NextResponse.json({ error: 'DB not configured' }, { status: 500 });
   
   try {
-    // 1. Fetch IMAP Settings (multiple servers)
     const imapDoc = await db.collection('settings').doc('imap').get();
     const imapServers = imapDoc.exists ? imapDoc.data()?.servers || [] : [];
-    
     if (imapServers.length === 0) {
-      return NextResponse.json({ success: false, message: 'No IMAP servers configured in settings.' });
+      return NextResponse.json({ success: false, message: 'No IMAP servers configured.' });
     }
 
-    // 2. Fetch SMTP Settings for replying
     const smtpDoc = await db.collection('settings').doc('smtp').get();
     const smtpServers = smtpDoc.exists ? smtpDoc.data()?.servers || [] : [];
     if (smtpServers.length === 0) {
-      return NextResponse.json({ success: false, message: 'No SMTP servers configured for replies.' });
+      return NextResponse.json({ success: false, message: 'No SMTP servers configured.' });
     }
 
     let totalProcessed = 0;
@@ -35,7 +32,6 @@ export async function POST() {
       }
 
       try {
-        // Connect to IMAP
         const config = {
           imap: {
             user: imapConfig.user,
@@ -51,9 +47,8 @@ export async function POST() {
         const connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        // Search for UNREAD emails
         const searchCriteria = ['UNSEEN'];
-        const fetchOptions = { bodies: ['HEADER', 'TEXT'], struct: true, markSeen: false };
+        const fetchOptions = { bodies: ['HEADER', 'TEXT', ''], struct: true, markSeen: false };
         const messages = await connection.search(searchCriteria, fetchOptions);
 
         diagnostics.push(`Found ${messages.length} UNSEEN messages on ${imapConfig.user}`);
@@ -62,27 +57,25 @@ export async function POST() {
         for (const item of messages) {
           try {
             const all = item.parts.find(part => part.which === 'TEXT') || item.parts[0];
-            const id = item.attributes.uid;
-            const idHeader = "Imap-Id: "+id+"\r\n";
+            const uid = item.attributes.uid;
+            const idHeader = "Imap-Id: " + uid + "\r\n";
             
-            // Parse email using mailparser
             const parsed = await simpleParser(idHeader + all.body);
             
-            // Extract sender email (to look up the lead)
             const headerPart = item.parts.find(part => part.which === 'HEADER');
             let senderEmail = '';
-            if (headerPart && headerPart.body && headerPart.body.from && headerPart.body.from.length > 0) {
-               senderEmail = headerPart.body.from[0].match(/<([^>]+)>/)?.[1] || headerPart.body.from[0];
+            if (headerPart?.body?.from?.length > 0) {
+              senderEmail = headerPart.body.from[0].match(/<([^>]+)>/)?.[1] || headerPart.body.from[0];
             }
 
             if (!senderEmail) {
-              diagnostics.push(`Skipped MSG ${id}: No sender email found`);
+              diagnostics.push(`Skipped MSG ${uid}: No sender email found`);
+              await connection.addFlags(uid, ['\\Seen']);
               continue;
             }
 
-            // Clean up email
             senderEmail = senderEmail.toLowerCase().trim();
-            diagnostics.push(`MSG ${id}: Sender=${senderEmail}`);
+            diagnostics.push(`MSG ${uid}: Sender=${senderEmail}`);
 
             // Check if it's a BOUNCE
             const isBounce = 
@@ -97,82 +90,150 @@ export async function POST() {
               const textBody = parsed.text || '';
               const matches = [...textBody.matchAll(emailRegex)].map(m => m[1].toLowerCase());
               
-              let bouncedLeadFound = false;
               for (const potentialEmail of matches) {
                 if (potentialEmail.includes('mailer-daemon') || potentialEmail.includes('postmaster')) continue;
-                
                 const clSnapshot = await db.collection('campaign_leads').where('email', '==', potentialEmail).get();
                 if (!clSnapshot.empty) {
                   const batch = db.batch();
                   clSnapshot.docs.forEach(doc => batch.update(doc.ref, { status: 'BOUNCED' }));
                   await batch.commit();
-                  bouncedLeadFound = true;
                 }
               }
-
-              await connection.addFlags(id, ['\\Seen']);
+              await connection.addFlags(uid, ['\\Seen']);
               processedCount++;
-              diagnostics.push(`MSG ${id}: Handled as Bounce`);
+              diagnostics.push(`MSG ${uid}: Handled as Bounce`);
               continue;
             }
 
-            // Find the most recently contacted campaign for this lead
+            // Check for unsubscribe
+            const bodyText = (parsed.text || '').toLowerCase();
+            const subjectText = (parsed.subject || '').toLowerCase();
+            if (subjectText.includes('unsubscribe') || bodyText.includes('unsubscribe me') || bodyText.includes('remove me from')) {
+              // Add to unsubscribe list
+              await db.collection('unsubscribes').doc(senderEmail).set({
+                email: senderEmail,
+                unsubscribedAt: new Date(),
+                reason: 'email_reply'
+              });
+              // Update all campaign_leads for this email
+              const clSnapshot = await db.collection('campaign_leads').where('email', '==', senderEmail).get();
+              if (!clSnapshot.empty) {
+                const batch = db.batch();
+                clSnapshot.docs.forEach(doc => batch.update(doc.ref, { status: 'UNSUBSCRIBED' }));
+                await batch.commit();
+              }
+              await connection.addFlags(uid, ['\\Seen']);
+              processedCount++;
+              diagnostics.push(`MSG ${uid}: Unsubscribe request from ${senderEmail}`);
+              continue;
+            }
+
+            // Find the lead - accept ANY active status (not BOUNCED, DEAD, UNSUBSCRIBED)
             const clSnapshot = await db.collection('campaign_leads')
               .where('email', '==', senderEmail)
-              .where('status', 'in', ['CONTACTED', 'AI_RESPONDED', 'REPLIED'])
               .orderBy('lastContactedAt', 'desc')
               .limit(1)
               .get();
 
             if (!clSnapshot.empty) {
-              diagnostics.push(`MSG ${id}: Lead found, processing reply`);
               const clDoc = clSnapshot.docs[0];
               const clData = clDoc.data();
+
+              // Skip terminal statuses
+              if (['BOUNCED', 'DEAD', 'UNSUBSCRIBED'].includes(clData.status)) {
+                diagnostics.push(`MSG ${uid}: Skipped - terminal status ${clData.status}`);
+                await connection.addFlags(uid, ['\\Seen']);
+                continue;
+              }
+
               const newHistory = clData.history || [];
+
+              // DEDUP: Check if this UID was already processed
+              const uidStr = String(uid);
+              const alreadyProcessed = newHistory.some((h: any) => h.imapUid === uidStr);
+              if (alreadyProcessed) {
+                diagnostics.push(`MSG ${uid}: Skipped - already in history (dedup)`);
+                await connection.addFlags(uid, ['\\Seen']);
+                continue;
+              }
+
+              diagnostics.push(`MSG ${uid}: Lead found (status=${clData.status}), processing reply`);
               
               // Append received message
-              newHistory.push({ type: 'RECEIVED', subject: parsed.subject || '', body: parsed.text || '', receivedAt: new Date().toISOString() });
+              newHistory.push({
+                type: 'RECEIVED',
+                subject: parsed.subject || '',
+                body: parsed.text || '',
+                receivedAt: new Date().toISOString(),
+                imapUid: uidStr
+              });
 
-              await clDoc.ref.update({ status: 'REPLIED', history: newHistory });
+              // Build thread history string for AI context
+              const threadHistoryStr = newHistory.map((h: any) => {
+                const direction = h.type === 'RECEIVED' ? 'LEAD' : 'US';
+                return `[${direction}] ${h.body || ''}`;
+              }).join('\n---\n');
 
+              // Get full product context
               const campaignDoc = await db.collection('campaigns').doc(clData.campaignId).get();
+              let productContext = campaignDoc.exists ? (campaignDoc.data()?.productInfo || '') : '';
               
-              if (campaignDoc.exists) {
-                 const campaign = campaignDoc.data();
-                 
-                 const aiReply = await analyzeReplyAndRespond(
-                   parsed.text || 'No text content', 
-                   "Previous email thread",
-                   campaign?.productInfo || ''
-                 );
-
-                 if (aiReply && !aiReply.includes('REQUIRES_MANUAL_INTERVENTION')) {
-                    const smtpConfig = smtpServers[0];
-                    const replySubject = `Re: ${campaign?.subject || 'Special Offer'}`;
-                    await sendEmail(smtpConfig, senderEmail, replySubject, aiReply || '');
-                    
-                    newHistory.push({ type: 'SENT', subject: replySubject, body: aiReply, sentAt: new Date().toISOString() });
-
-                    await clDoc.ref.update({ 
-                      status: 'AI_RESPONDED',
-                      lastContactedAt: new Date(),
-                      followUpCount: (clData.followUpCount || 0) + 1,
-                      history: newHistory
-                    });
-                 }
+              if (campaignDoc.exists && campaignDoc.data()?.productId) {
+                const fullCtx = await getFullProductContext(campaignDoc.data()?.productId);
+                if (fullCtx) productContext = fullCtx;
               }
-              await connection.addFlags(id, ['\\Seen']);
+
+              // Try AI response
+              try {
+                const aiReply = await analyzeReplyAndRespond(
+                  parsed.text || 'No text content',
+                  threadHistoryStr,
+                  productContext
+                );
+
+                if (aiReply && !aiReply.includes('REQUIRES_MANUAL_INTERVENTION')) {
+                  const smtpConfig = smtpServers[0];
+                  const campaign = campaignDoc.exists ? campaignDoc.data() : null;
+                  const replySubject = `Re: ${campaign?.subject || 'Follow Up'}`;
+                  await sendEmail(smtpConfig, senderEmail, replySubject, aiReply || '');
+                  
+                  newHistory.push({
+                    type: 'SENT',
+                    subject: replySubject,
+                    body: aiReply,
+                    sentAt: new Date().toISOString()
+                  });
+
+                  await clDoc.ref.update({
+                    status: 'AI_RESPONDED',
+                    lastContactedAt: new Date(),
+                    history: newHistory
+                  });
+                  diagnostics.push(`MSG ${uid}: AI responded successfully`);
+                } else {
+                  // AI can't answer - mark for manual review
+                  await clDoc.ref.update({
+                    status: 'NEEDS_REVIEW',
+                    lastContactedAt: new Date(),
+                    history: newHistory
+                  });
+                  diagnostics.push(`MSG ${uid}: Marked NEEDS_REVIEW - AI requires manual intervention`);
+                }
+              } catch (aiErr: any) {
+                // AI error - still save the received message, mark for review
+                await clDoc.ref.update({
+                  status: 'NEEDS_REVIEW',
+                  lastContactedAt: new Date(),
+                  history: newHistory
+                });
+                diagnostics.push(`MSG ${uid}: AI error (${aiErr.message}), marked NEEDS_REVIEW`);
+              }
+
+              await connection.addFlags(uid, ['\\Seen']);
               processedCount++;
             } else {
-              // Not found or not in right status
-              const checkAny = await db.collection('campaign_leads').where('email', '==', senderEmail).get();
-              if (checkAny.empty) {
-                 diagnostics.push(`MSG ${id}: Ignored - Email ${senderEmail} not found in any campaign`);
-              } else {
-                 const stats = checkAny.docs.map(d => d.data().status).join(',');
-                 diagnostics.push(`MSG ${id}: Ignored - Email ${senderEmail} exists but status is [${stats}], needs to be CONTACTED, AI_RESPONDED, or REPLIED`);
-              }
-              // Do we mark it as seen? Let's leave it unseen so they don't lose it if it's important manual mail
+              diagnostics.push(`MSG ${uid}: Email ${senderEmail} not found in any campaign`);
+              await connection.addFlags(uid, ['\\Seen']);
             }
 
           } catch (innerErr: any) {

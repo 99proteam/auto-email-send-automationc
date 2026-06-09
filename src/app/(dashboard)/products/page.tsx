@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Package, Plus, Trash2, Bot, Upload, X, Edit3, FileText } from 'lucide-react';
+import { Package, Plus, Trash2, Bot, Upload, X, Edit3, FileText, Link as LinkIcon } from 'lucide-react';
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<any[]>([]);
@@ -136,10 +136,12 @@ export default function ProductsPage() {
         body: JSON.stringify({
           id: editProduct.id,
           name: editProduct.name,
+          url: editProduct.url || '',
           description: editProduct.description,
           features: typeof editProduct.features === 'string' ? editProduct.features.split(',').map((f: string) => f.trim()) : editProduct.features,
           pricing_info: editProduct.pricing_info,
-          target_audience: editProduct.target_audience
+          target_audience: editProduct.target_audience,
+          customFields: editProduct.customFields || []
         })
       });
       const data = await res.json();
@@ -182,6 +184,27 @@ export default function ProductsPage() {
       setIsSaving(false);
       if (editFileInputRef.current) editFileInputRef.current.value = '';
     }
+  };
+
+  // Custom fields helpers
+  const addCustomField = () => {
+    const fields = editProduct.customFields || [];
+    setEditProduct({
+      ...editProduct,
+      customFields: [...fields, { title: '', value: '', link: '' }]
+    });
+  };
+
+  const updateCustomField = (index: number, key: string, value: string) => {
+    const fields = [...(editProduct.customFields || [])];
+    fields[index] = { ...fields[index], [key]: value };
+    setEditProduct({ ...editProduct, customFields: fields });
+  };
+
+  const removeCustomField = (index: number) => {
+    const fields = [...(editProduct.customFields || [])];
+    fields.splice(index, 1);
+    setEditProduct({ ...editProduct, customFields: fields });
   };
 
   return (
@@ -232,10 +255,15 @@ export default function ProductsPage() {
                 <div>
                   <h3 className="text-xl font-bold text-white mb-1">{p.name}</h3>
                   <p className="text-gray-400 text-sm line-clamp-2">{p.description}</p>
+                  {p.url && (
+                    <a href={p.url} target="_blank" rel="noopener noreferrer" className="text-blue-400 text-sm hover:underline mt-1 inline-flex items-center gap-1">
+                      <LinkIcon className="w-3 h-3" />{p.url}
+                    </a>
+                  )}
                 </div>
                 <div className="flex gap-2">
                   <button 
-                    onClick={() => setEditProduct(p)}
+                    onClick={() => setEditProduct({ ...p, customFields: p.customFields || [] })}
                     className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 text-gray-300 hover:bg-gray-700 rounded-lg transition-colors text-sm"
                   >
                     <Edit3 className="w-4 h-4" /> Edit Data
@@ -256,6 +284,16 @@ export default function ProductsPage() {
                   <span key={i} className="px-2 py-1 bg-gray-800 text-gray-300 text-xs rounded-md">{f}</span>
                 ))}
               </div>
+              {/* Show custom fields badges */}
+              {p.customFields && p.customFields.length > 0 && (
+                <div className="flex gap-2 flex-wrap">
+                  {p.customFields.map((cf: any, i: number) => (
+                    <span key={i} className="px-2 py-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs rounded-md">
+                      {cf.title}: {cf.value || cf.link || 'Set'}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -291,6 +329,10 @@ export default function ProductsPage() {
                 <input type="text" value={editProduct.name} onChange={e => setEditProduct({...editProduct, name: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500" />
               </div>
               <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">Product URL</label>
+                <input type="url" value={editProduct.url || ''} onChange={e => setEditProduct({...editProduct, url: e.target.value})} placeholder="https://your-product.com" className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 placeholder-gray-600" />
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-400 mb-1">Description</label>
                 <textarea value={editProduct.description} onChange={e => setEditProduct({...editProduct, description: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 h-24" />
               </div>
@@ -305,6 +347,74 @@ export default function ProductsPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-400 mb-1">Target Audience</label>
                 <input type="text" value={editProduct.target_audience} onChange={e => setEditProduct({...editProduct, target_audience: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500" />
+              </div>
+
+              {/* Custom Fields Section */}
+              <div className="border-t border-gray-800 pt-4">
+                <div className="flex justify-between items-center mb-3">
+                  <div>
+                    <h4 className="text-sm font-semibold text-white">Custom Fields</h4>
+                    <p className="text-xs text-gray-400 mt-0.5">Add coupon codes, payment links, product links, or any extra info the AI should know.</p>
+                  </div>
+                  <button
+                    onClick={addCustomField}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 border border-emerald-500/20 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    <Plus className="w-4 h-4" /> Add Field
+                  </button>
+                </div>
+
+                {(editProduct.customFields || []).length === 0 ? (
+                  <div className="text-center py-6 bg-gray-800/30 rounded-xl border border-dashed border-gray-700">
+                    <p className="text-gray-500 text-sm">No custom fields yet. Click &quot;Add Field&quot; to add coupon codes, links, etc.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {(editProduct.customFields || []).map((field: any, index: number) => (
+                      <div key={index} className="bg-gray-800/50 border border-gray-700 rounded-xl p-4 space-y-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-semibold text-gray-400 uppercase">Field #{index + 1}</span>
+                          <button
+                            onClick={() => removeCustomField(index)}
+                            className="text-red-400 hover:text-red-300 p-1 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Title (e.g. Coupon Code, Payment Link, Demo URL)</label>
+                          <input
+                            type="text"
+                            value={field.title}
+                            onChange={e => updateCustomField(index, 'title', e.target.value)}
+                            placeholder="e.g. Coupon Code"
+                            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 placeholder-gray-600"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Value / Description</label>
+                          <input
+                            type="text"
+                            value={field.value}
+                            onChange={e => updateCustomField(index, 'value', e.target.value)}
+                            placeholder="e.g. WELCOME10 for 10% off"
+                            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 placeholder-gray-600"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Link (optional)</label>
+                          <input
+                            type="url"
+                            value={field.link}
+                            onChange={e => updateCustomField(index, 'link', e.target.value)}
+                            placeholder="https://..."
+                            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 placeholder-gray-600"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 

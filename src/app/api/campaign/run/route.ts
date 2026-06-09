@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebaseAdmin';
-import { generateEmailDraft, generateFollowUpDraft } from '@/lib/gemini';
+import { generateEmailDraft, generateFollowUpDraft, getFullProductContext } from '@/lib/gemini';
 import { sendEmail } from '@/lib/email';
 
 export async function POST(request: Request) {
@@ -116,10 +116,16 @@ export async function POST(request: Request) {
 
         const now = new Date();
         let emailSent = false;
+
+        let fullProductContext = campaign.productInfo || '';
+        if (campaign.productId) {
+          const ctx = await getFullProductContext(campaign.productId);
+          if (ctx) fullProductContext = ctx;
+        }
         
         if (clData.status === 'PENDING') {
           // INITIAL OUTREACH
-          const draft = await generateEmailDraft(campaign.productInfo, lead);
+          const draft = await generateEmailDraft(fullProductContext, lead);
           await sendEmail(availableSmtp, lead.email, campaign.subject || 'Special Offer', draft || '');
           emailSent = true;
 
@@ -146,7 +152,7 @@ export async function POST(request: Request) {
             
             if (currentFollowUpCount < maxFollowUps) {
               const followUpSubject = `Re: ${campaign.subject || 'Special Offer'}`;
-              const followUpDraft = await generateFollowUpDraft(campaign.productInfo, lead, currentFollowUpCount + 1);
+              const followUpDraft = await generateFollowUpDraft(fullProductContext, lead, currentFollowUpCount + 1);
               await sendEmail(availableSmtp, lead.email, followUpSubject, followUpDraft || '');
               emailSent = true;
 
