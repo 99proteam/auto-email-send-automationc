@@ -8,8 +8,7 @@ export async function GET() {
     // Fetch leads that have received replies
     const snapshot = await db.collection('campaign_leads')
       .where('status', 'in', ['NEEDS_REVIEW', 'REPLIED', 'AI_RESPONDED'])
-      .orderBy('lastContactedAt', 'desc')
-      .limit(100)
+      .limit(500)
       .get();
 
     const leads = [];

@@ -19,8 +19,11 @@ export default function InboxPage() {
       const data = await res.json();
       if (data.success) {
         setLeads(data.leads || []);
+      } else {
+        alert('Failed to load inbox: ' + data.error);
       }
-    } catch (e) {
+    } catch (e: any) {
+      alert('Error fetching inbox: ' + e.message);
       console.error(e);
     }
   };
