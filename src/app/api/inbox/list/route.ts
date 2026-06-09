@@ -16,9 +16,12 @@ export async function GET() {
     for (const doc of snapshot.docs) {
       const data = doc.data();
 
-      // Only include leads that have at least one RECEIVED message in history
+      // Include leads that have at least one RECEIVED message in history,
+      // OR if they have status REPLIED/NEEDS_REVIEW (legacy compatibility)
       const hasReceived = (data.history || []).some((h: any) => h.type === 'RECEIVED');
-      if (!hasReceived) continue;
+      if (!hasReceived && !['REPLIED', 'NEEDS_REVIEW'].includes(data.status)) {
+        continue;
+      }
 
       let campaignName = 'Unknown';
       if (data.campaignId) {
