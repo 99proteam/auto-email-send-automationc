@@ -5,9 +5,9 @@ export async function GET() {
   if (!db) return NextResponse.json({ error: 'Firebase not configured' }, { status: 500 });
 
   try {
-    // Fetch leads that have received replies (any status with history)
+    // Fetch leads that have received replies
     const snapshot = await db.collection('campaign_leads')
-      .where('status', 'in', ['NEEDS_REVIEW', 'REPLIED', 'AI_RESPONDED', 'CONTACTED'])
+      .where('status', 'in', ['NEEDS_REVIEW', 'REPLIED', 'AI_RESPONDED'])
       .orderBy('lastContactedAt', 'desc')
       .limit(100)
       .get();
