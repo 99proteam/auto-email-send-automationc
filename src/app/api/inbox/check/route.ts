@@ -64,8 +64,9 @@ export async function POST() {
             
             const headerPart = item.parts.find(part => part.which === 'HEADER');
             let senderEmail = '';
-            if (headerPart?.body?.from?.length > 0) {
-              senderEmail = headerPart.body.from[0].match(/<([^>]+)>/)?.[1] || headerPart.body.from[0];
+            const fromArray = headerPart?.body?.from;
+            if (fromArray && fromArray.length > 0) {
+              senderEmail = fromArray[0].match(/<([^>]+)>/)?.[1] || fromArray[0];
             }
 
             if (!senderEmail) {
