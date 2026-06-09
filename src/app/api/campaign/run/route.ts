@@ -125,7 +125,13 @@ export async function POST(request: Request) {
         
         if (clData.status === 'PENDING') {
           // INITIAL OUTREACH
-          const draft = await generateEmailDraft(fullProductContext, lead);
+          let draft = await generateEmailDraft(fullProductContext, lead);
+          
+          if (campaign.includeChatLink) {
+            const kbUrl = process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL}/kb` : 'https://auto-sable-six.vercel.app/kb';
+            draft += `\n\n---\nP.S. Have a quick question? Chat with our AI assistant instantly here: ${kbUrl}`;
+          }
+
           await sendEmail(availableSmtp, lead.email, campaign.subject || 'Special Offer', draft || '');
           emailSent = true;
 
@@ -152,7 +158,13 @@ export async function POST(request: Request) {
             
             if (currentFollowUpCount < maxFollowUps) {
               const followUpSubject = `Re: ${campaign.subject || 'Special Offer'}`;
-              const followUpDraft = await generateFollowUpDraft(fullProductContext, lead, currentFollowUpCount + 1);
+              let followUpDraft = await generateFollowUpDraft(fullProductContext, lead, currentFollowUpCount + 1);
+              
+              if (campaign.includeChatLink) {
+                const kbUrl = process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL}/kb` : 'https://auto-sable-six.vercel.app/kb';
+                followUpDraft += `\n\n---\nP.S. Have a quick question? Chat with our AI assistant instantly here: ${kbUrl}`;
+              }
+
               await sendEmail(availableSmtp, lead.email, followUpSubject, followUpDraft || '');
               emailSent = true;
 

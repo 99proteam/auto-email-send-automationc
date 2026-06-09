@@ -13,7 +13,7 @@ export default function CampaignsPage() {
   const [creating, setCreating] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [previewDraft, setPreviewDraft] = useState('');
-  const [form, setForm] = useState({ name: '', subject: '', productId: '', listName: '' });
+  const [form, setForm] = useState({ name: '', subject: '', productId: '', listName: '', includeChatLink: true });
 
   const [runningCampaignId, setRunningCampaignId] = useState<string | null>(null);
   
@@ -53,13 +53,14 @@ export default function CampaignsPage() {
           productId: form.productId,
           productInfo: `${selectedProduct?.name}: ${selectedProduct?.description}. Features: ${selectedProduct?.features?.join(', ')}. Pricing: ${selectedProduct?.pricing_info || 'Contact us'}`,
           listName: form.listName,
-          status: 'ACTIVE'
+          status: 'ACTIVE',
+          includeChatLink: form.includeChatLink
         })
       });
       const data = await res.json();
       if (data.success) {
         setShowCreate(false);
-        setForm({ name: '', subject: '', productId: '', listName: '' });
+        setForm({ name: '', subject: '', productId: '', listName: '', includeChatLink: true });
         fetchCampaigns();
       }
     } catch (err) { console.error(err); }
@@ -188,6 +189,19 @@ export default function CampaignsPage() {
                   {leadLists.map(list => <option key={list} value={list}>{list}</option>)}
                 </select>
                 {leadLists.length === 0 && <p className="text-xs text-amber-500 mt-1">No lists found. Please upload leads first.</p>}
+              </div>
+
+              <div className="flex items-center gap-2 mt-2">
+                <input 
+                  type="checkbox" 
+                  id="includeChatLink" 
+                  checked={form.includeChatLink} 
+                  onChange={e => setForm({...form, includeChatLink: e.target.checked})}
+                  className="w-4 h-4 rounded border-gray-700 bg-gray-800 text-blue-600 focus:ring-blue-500"
+                />
+                <label htmlFor="includeChatLink" className="text-sm font-medium text-gray-300">
+                  Include public AI Chat Assistant link in emails
+                </label>
               </div>
 
               {/* Preview Box */}

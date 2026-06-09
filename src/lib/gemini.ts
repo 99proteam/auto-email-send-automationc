@@ -98,7 +98,12 @@ IMPORTANT RULES:
 - If a payment link is available, share it when they want to buy.
 - Write naturally and professionally. No brackets or placeholders.
 - If the question is COMPLETELY unrelated to the product or you genuinely cannot answer it from the provided context, reply EXACTLY with: "REQUIRES_MANUAL_INTERVENTION"
-- Otherwise, ALWAYS provide a helpful response. You have all the product info you need below.
+
+CRITICAL ANTI-SPAM RULES (MUST FOLLOW):
+- Keep your response SHORT. Maximum 2 or 3 short paragraphs.
+- DO NOT list more than 1 or 2 products, even if the context has many. Suggest the single best fit.
+- DO NOT include more than 1 or 2 URLs total. Too many links trigger spam filters.
+- Sound conversational, human, and concise. Do NOT sound like an aggressive marketer or a massive catalog.
 
 Product Information:
 ${productContext}
@@ -109,7 +114,7 @@ ${threadHistory}
 Latest Reply from Lead:
 ${replyBody}
 
-Write a polite, helpful, and persuasive response. Use actual links and prices from the product info above.`;
+Write a polite, helpful, and concise response. Use actual links and prices from the product info above, but strictly follow the anti-spam rules.`;
 
   const response = await callWithRetry(() => ai.models.generateContent({
     model: 'gemini-2.5-flash',
