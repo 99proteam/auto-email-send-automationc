@@ -10,6 +10,7 @@ export default function InboxPage() {
   const [filter, setFilter] = useState<'all' | 'needs_review' | 'replied' | 'ai_responded'>('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [filterCampaign, setFilterCampaign] = useState('all');
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchLeads = async () => {
@@ -40,11 +41,17 @@ export default function InboxPage() {
   };
 
   // Filter and sort leads
+  const uniqueCampaigns = Array.from(new Set(leads.map(l => l.campaignName || 'Unknown Campaign'))).sort();
+
   const filteredLeads = leads.filter((lead) => {
     // Status filter
     if (filter === 'needs_review' && lead.status !== 'NEEDS_REVIEW') return false;
     if (filter === 'replied' && lead.status !== 'REPLIED') return false;
     if (filter === 'ai_responded' && lead.status !== 'AI_RESPONDED') return false;
+
+    // Campaign filter
+    const cName = lead.campaignName || 'Unknown Campaign';
+    if (filterCampaign !== 'all' && cName !== filterCampaign) return false;
 
     // Date filter
     const receivedMessages = (lead.history || []).filter((h: any) => h.type === 'RECEIVED');
@@ -107,6 +114,22 @@ export default function InboxPage() {
         </div>
       </div>
 
+      {/* Status Legend */}
+      <div className="flex flex-wrap gap-4 p-4 bg-gray-900 border border-gray-800 rounded-xl text-sm">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-amber-400" />
+          <span className="text-gray-300"><strong className="text-amber-400">Manual Reply Needed:</strong> AI couldn't answer. Needs your human reply.</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <span className="text-gray-300"><strong className="text-emerald-400">AI Responded:</strong> AI successfully handled the reply automatically.</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <User className="w-4 h-4 text-blue-400" />
+          <span className="text-gray-300"><strong className="text-blue-400">Replied:</strong> General reply status (usually older threads).</span>
+        </div>
+      </div>
+
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center bg-gray-900 border border-gray-800 rounded-xl p-4">
         <Filter className="w-4 h-4 text-gray-400" />
@@ -120,6 +143,17 @@ export default function InboxPage() {
           <option value="needs_review">⚠️ Manual Reply Needed</option>
           <option value="replied">Replied</option>
           <option value="ai_responded">AI Responded</option>
+        </select>
+
+        <select
+          value={filterCampaign}
+          onChange={(e) => setFilterCampaign(e.target.value)}
+          className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500 max-w-[200px]"
+        >
+          <option value="all">All Campaigns</option>
+          {uniqueCampaigns.map(c => (
+            <option key={c as string} value={c as string}>{c}</option>
+          ))}
         </select>
 
         <div className="flex items-center gap-2 text-sm text-gray-400">
