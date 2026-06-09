@@ -11,6 +11,8 @@ export default function CampaignsPage() {
   
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewDraft, setPreviewDraft] = useState('');
   const [form, setForm] = useState({ name: '', subject: '', productId: '', listName: '' });
 
   const [runningCampaignId, setRunningCampaignId] = useState<string | null>(null);
@@ -62,6 +64,30 @@ export default function CampaignsPage() {
       }
     } catch (err) { console.error(err); }
     finally { setCreating(false); }
+  };
+
+  const handlePreview = async () => {
+    if (!form.productId) return alert('Please select a product first to preview.');
+    setPreviewing(true);
+    setPreviewDraft('');
+    try {
+      const res = await fetch('/api/campaign/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId: form.productId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPreviewDraft(data.draft);
+      } else {
+        alert('Failed to generate preview: ' + data.error);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error generating preview');
+    } finally {
+      setPreviewing(false);
+    }
   };
 
   const handleToggleStatus = async (id: string, currentStatus: string) => {
@@ -163,6 +189,29 @@ export default function CampaignsPage() {
                 </select>
                 {leadLists.length === 0 && <p className="text-xs text-amber-500 mt-1">No lists found. Please upload leads first.</p>}
               </div>
+
+              {/* Preview Box */}
+              {form.productId && (
+                <div className="pt-2 border-t border-gray-800">
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="block text-sm font-medium text-gray-400">AI Email Preview</label>
+                    <button 
+                      onClick={handlePreview} 
+                      disabled={previewing}
+                      className="text-xs px-3 py-1.5 bg-purple-600/20 text-purple-400 hover:bg-purple-600/30 border border-purple-500/20 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {previewing ? 'Generating...' : 'Generate Test Draft'}
+                    </button>
+                  </div>
+                  {previewDraft ? (
+                    <div className="p-3 bg-gray-800 border border-gray-700 rounded-xl max-h-48 overflow-y-auto">
+                      <p className="text-sm text-gray-300 whitespace-pre-wrap">{previewDraft}</p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-500 italic">Click the button to see exactly what the AI will write based on this product's data.</p>
+                  )}
+                </div>
+              )}
             </div>
             <div className="p-4 border-t border-gray-800 flex justify-end gap-3">
               <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-gray-400 hover:text-white">Cancel</button>

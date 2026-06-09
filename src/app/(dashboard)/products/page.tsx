@@ -279,10 +279,12 @@ export default function ProductsPage() {
                   </button>
                 </div>
               </div>
-              <div className="flex gap-2 flex-wrap mt-2">
-                {p.features?.map((f: string, i: number) => (
-                  <span key={i} className="px-2 py-1 bg-gray-800 text-gray-300 text-xs rounded-md">{f}</span>
-                ))}
+              <div className="mt-2 text-gray-300 text-sm">
+                <ul className="list-disc pl-5 space-y-1">
+                  {p.features?.map((f: string, i: number) => (
+                    <li key={i}>{f}</li>
+                  ))}
+                </ul>
               </div>
               {/* Show custom fields badges */}
               {p.customFields && p.customFields.length > 0 && (
@@ -387,7 +389,7 @@ export default function ProductsPage() {
                             type="text"
                             value={field.title}
                             onChange={e => updateCustomField(index, 'title', e.target.value)}
-                            placeholder="e.g. Coupon Code"
+                            placeholder="e.g. Coupon Code (Title)"
                             className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 placeholder-gray-600"
                           />
                         </div>
@@ -397,7 +399,7 @@ export default function ProductsPage() {
                             type="text"
                             value={field.value}
                             onChange={e => updateCustomField(index, 'value', e.target.value)}
-                            placeholder="e.g. WELCOME10 for 10% off"
+                            placeholder="e.g. save50 (Value)"
                             className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 placeholder-gray-600"
                           />
                         </div>

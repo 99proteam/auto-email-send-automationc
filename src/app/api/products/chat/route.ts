@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebaseAdmin';
 import { GoogleGenAI } from '@google/genai';
 
+import { getFullProductContext } from '@/lib/gemini';
+
 async function callWithRetry(fn: () => Promise<any>, retries = 3, delay = 2000): Promise<any> {
   for (let i = 0; i < retries; i++) {
     try {
@@ -27,9 +29,9 @@ export async function POST(req: Request) {
 
     let apiKey = process.env.GEMINI_API_KEY;
     if (db) {
-      const doc = await db.collection('settings').doc('gemini').get();
-      if (doc.exists && doc.data()?.apiKey) {
-        apiKey = doc.data()?.apiKey;
+      const geminiDoc = await db.collection('settings').doc('gemini').get();
+      if (geminiDoc.exists && geminiDoc.data()?.apiKey) {
+        apiKey = geminiDoc.data()?.apiKey;
       }
     }
 
@@ -37,13 +39,13 @@ export async function POST(req: Request) {
 
     const ai = new GoogleGenAI({ apiKey });
     
+    const productContext = await getFullProductContext(productId);
+    
     const prompt = `
-      You are an expert sales representative for the following product:
-      Name: ${product?.name}
-      Description: ${product?.description}
-      Features: ${product?.features?.join(', ')}
-      Target Audience: ${product?.target_audience}
-      Pricing: ${product?.pricing_info}
+      You are an expert sales representative for a product.
+      
+      Product Information:
+      ${productContext}
       
       Additional Instructions/Corrections from the user:
       ${product?.corrections || 'None.'}

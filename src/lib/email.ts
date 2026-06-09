@@ -57,11 +57,21 @@ export async function sendEmail(
     },
   });
 
+  // Parse markdown and newlines to HTML if it looks like plain text
+  let formattedBody = body;
+  if (!formattedBody.includes('<br') && !formattedBody.includes('<p>')) {
+    formattedBody = formattedBody
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+      .replace(/\n/g, '<br/>');
+  }
+
   const mailOptions: any = {
     from: `"${senderName}" <${smtpConfig.user}>`,
     to: recipientEmail,
     subject: emailSubject,
-    html: body,
+    html: formattedBody,
     messageId: messageId,
     headers: {
       'X-Mailer': 'AutoLead AI Mailer',

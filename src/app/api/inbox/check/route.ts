@@ -233,8 +233,85 @@ export async function POST() {
               await connection.addFlags(uid, ['\\Seen']);
               processedCount++;
             } else {
-              diagnostics.push(`MSG ${uid}: Email ${senderEmail} not found in any campaign`);
+              diagnostics.push(`MSG ${uid}: Email ${senderEmail} not found in any campaign. Attempting general inquiry fallback.`);
+              
+              try {
+                // Fetch all products to build a master context
+                const productsSnap = await db.collection('products').get();
+                let masterContext = 'Master Product Catalog:\n\n';
+                for (const pDoc of productsSnap.docs) {
+                  masterContext += `--- PRODUCT: ${pDoc.data().name} ---\n`;
+                  const ctx = await getFullProductContext(pDoc.id);
+                  masterContext += ctx + '\n\n';
+                }
+
+                if (productsSnap.empty) {
+                  diagnostics.push(`MSG ${uid}: No products found for general inquiry fallback.`);
+                  await connection.addFlags(uid, ['\\Seen']);
+                  continue;
+                }
+
+                // AI Response
+                const aiReply = await analyzeReplyAndRespond(
+                  parsed.text || 'No text content',
+                  '[LEAD] ' + (parsed.text || ''),
+                  masterContext
+                );
+
+                if (aiReply && !aiReply.includes('REQUIRES_MANUAL_INTERVENTION')) {
+                  const smtpConfig = smtpServers[0];
+                  const replySubject = `Re: ${parsed.subject || 'Inquiry'}`;
+                  await sendEmail(smtpConfig, senderEmail, replySubject, aiReply || '');
+                  
+                  // Create a new lead for tracking
+                  await db.collection('campaign_leads').add({
+                    email: senderEmail,
+                    name: senderEmail.split('@')[0],
+                    campaignId: 'INBOUND_INQUIRIES',
+                    campaignName: 'General Inquiries',
+                    status: 'AI_RESPONDED',
+                    followUpCount: 0,
+                    lastContactedAt: new Date(),
+                    history: [{
+                      type: 'RECEIVED',
+                      subject: parsed.subject || '',
+                      body: parsed.text || '',
+                      receivedAt: new Date().toISOString(),
+                      imapUid: String(uid)
+                    }, {
+                      type: 'SENT',
+                      subject: replySubject,
+                      body: aiReply,
+                      sentAt: new Date().toISOString()
+                    }]
+                  });
+                  diagnostics.push(`MSG ${uid}: General inquiry handled and replied by AI`);
+                } else {
+                  // Mark for manual review
+                  await db.collection('campaign_leads').add({
+                    email: senderEmail,
+                    name: senderEmail.split('@')[0],
+                    campaignId: 'INBOUND_INQUIRIES',
+                    campaignName: 'General Inquiries',
+                    status: 'NEEDS_REVIEW',
+                    followUpCount: 0,
+                    lastContactedAt: new Date(),
+                    history: [{
+                      type: 'RECEIVED',
+                      subject: parsed.subject || '',
+                      body: parsed.text || '',
+                      receivedAt: new Date().toISOString(),
+                      imapUid: String(uid)
+                    }]
+                  });
+                  diagnostics.push(`MSG ${uid}: Marked NEEDS_REVIEW for general inquiry`);
+                }
+              } catch (fallbackErr: any) {
+                diagnostics.push(`MSG ${uid}: Fallback error (${fallbackErr.message})`);
+              }
+
               await connection.addFlags(uid, ['\\Seen']);
+              processedCount++;
             }
 
           } catch (innerErr: any) {
