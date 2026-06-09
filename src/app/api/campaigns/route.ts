@@ -57,7 +57,7 @@ export async function POST(req: Request) {
   if (!db) return NextResponse.json({ error: 'DB not configured' }, { status: 500 });
   
   try {
-    const { name, subject, productId, productInfo, listName, status } = await req.json();
+    const { name, subject, productId, productInfo, listName, status, includeChatLink } = await req.json();
     if (!name || !subject || !productId) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
 
     const docRef = await db.collection('campaigns').add({
@@ -67,6 +67,7 @@ export async function POST(req: Request) {
       productInfo,
       listName: listName || '',
       status: status || 'ACTIVE',
+      includeChatLink: includeChatLink === true,
       createdAt: new Date()
     });
 

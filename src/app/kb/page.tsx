@@ -13,6 +13,7 @@ export default function KnowledgeBasePage() {
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [rateLimitExceeded, setRateLimitExceeded] = useState(false);
+  const [messagesRemaining, setMessagesRemaining] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -48,9 +49,11 @@ export default function KnowledgeBasePage() {
       
       if (res.status === 429) {
         setRateLimitExceeded(true);
+        setMessagesRemaining(0);
         setMessages(prev => [...prev, { role: 'ai', content: data.error }]);
       } else if (data.success) {
         setMessages(prev => [...prev, { role: 'ai', content: data.reply }]);
+        if (data.remaining !== undefined) setMessagesRemaining(data.remaining);
       } else {
         setMessages(prev => [...prev, { role: 'ai', content: 'Sorry, I am having trouble connecting to my knowledge base right now.' }]);
       }
@@ -207,6 +210,9 @@ export default function KnowledgeBasePage() {
                 >
                   <Send className="w-4 h-4" />
                 </button>
+              </div>
+              <div className="text-[10px] text-gray-500 text-right mt-1.5 mr-1">
+                {messagesRemaining !== null ? `${messagesRemaining} messages remaining today` : '10 messages remaining today'}
               </div>
             </div>
           </div>
